@@ -54,6 +54,7 @@ export function DocumentsClient({ initialDocuments, canUpload }: Props) {
             <tr className="border-b border-gray-200 bg-gray-50">
               <th className="text-left px-4 py-3 font-medium text-gray-600">Title</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Source</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Owner / body</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Version</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Uploaded by</th>
@@ -64,7 +65,7 @@ export function DocumentsClient({ initialDocuments, canUpload }: Props) {
           <tbody>
             {!documents.length ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-gray-400">
+                <td colSpan={8} className="text-center py-12 text-gray-400">
                   <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
                   <p>No documents uploaded yet.</p>
                   {canUpload && <p className="text-xs mt-1">Upload your first compliance document to get started.</p>}
@@ -78,6 +79,9 @@ export function DocumentsClient({ initialDocuments, canUpload }: Props) {
                 </td>
                 <td className="px-4 py-3 text-gray-600">
                   {(doc as any).knowledge_sources?.name ?? '—'}
+                </td>
+                <td className="px-4 py-3 text-gray-600">
+                  {(doc as any).knowledge_sources?.owner ?? '—'}
                 </td>
                 <td className="px-4 py-3 text-gray-600">
                   {(doc as any).knowledge_assets?.version_label ?? '—'}

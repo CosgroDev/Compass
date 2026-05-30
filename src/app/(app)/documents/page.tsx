@@ -19,7 +19,7 @@ export default async function DocumentsPage() {
     .from('documents')
     .select(`
       *,
-      knowledge_sources(id, name),
+      knowledge_sources(id, name, owner),
       knowledge_assets(id, title, version_label),
       user_profiles(id, full_name)
     `)
