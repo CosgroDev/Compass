@@ -157,7 +157,7 @@ ${markdown.slice(0, 80000)}
 export async function extractWithClaude(markdown: string): Promise<ExtractionResult> {
   const message = await getClient().messages.create({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 32000,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -173,7 +173,13 @@ export async function extractWithClaude(markdown: string): Promise<ExtractionRes
   }
 
   const jsonText = extractJson(content.text)
-  const parsed = JSON.parse(jsonText)
+  let parsed: ReturnType<typeof JSON.parse>
+  try {
+    parsed = JSON.parse(jsonText)
+  } catch (e) {
+    const truncated = jsonText.slice(0, 200)
+    throw new Error(`Claude returned malformed JSON (stop_reason: ${message.stop_reason}). First 200 chars: ${truncated}`)
+  }
 
   return {
     ...parsed,
