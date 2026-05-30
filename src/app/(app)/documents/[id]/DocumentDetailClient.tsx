@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -46,6 +46,63 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
   const [openJobId, setOpenJobId] = useState<string | null>(initialJobs[0]?.id ?? null)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [liveEvents, setLiveEvents] = useState<{ id: string; event_type: string; message: string; created_at: string }[]>([])
+  const liveLogRef = useRef<HTMLDivElement>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const isActivelyProcessing = ['processing', 'queued', 'uploaded'].includes(document.status) || processing
+
+  // Auto-scroll live log to bottom
+  useEffect(() => {
+    if (liveLogRef.current) {
+      liveLogRef.current.scrollTop = liveLogRef.current.scrollHeight
+    }
+  }, [liveEvents])
+
+  // Poll for updates whenever the document is processing
+  useEffect(() => {
+    if (!isActivelyProcessing) {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+      return
+    }
+
+    async function poll() {
+      const res = await fetch(`/api/jobs?document_id=${doc.id}`)
+      if (!res.ok) return
+      const { jobs: refreshed } = await res.json()
+      if (!refreshed?.length) return
+
+      const latestJob = refreshed[0]
+      setJobs(refreshed)
+      setOpenJobId(latestJob.id)
+
+      const events = (latestJob.document_processing_events ?? [])
+        .slice()
+        .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      setLiveEvents(events)
+
+      // Fetch updated document status
+      const docRes = await fetch(`/api/document-status?document_id=${doc.id}`)
+      if (docRes.ok) {
+        const { status, extraction_meta } = await docRes.json()
+        setDocument(prev => ({ ...prev, status }))
+
+        if (['review_required', 'failed', 'completed'].includes(status)) {
+          if (pollingRef.current) clearInterval(pollingRef.current)
+          setProcessing(false)
+          if (extraction_meta) setExtractionMeta(extraction_meta)
+          if (status === 'failed') {
+            const errEvent = events.findLast((e: any) => e.event_type === 'error')
+            if (errEvent) setProcessingError(errEvent.message)
+          }
+        }
+      }
+    }
+
+    poll()
+    pollingRef.current = setInterval(poll, 3000)
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current) }
+  }, [isActivelyProcessing, doc.id])
 
   async function handleDelete() {
     setDeleting(true)
@@ -61,6 +118,7 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
   async function triggerProcessing() {
     setProcessing(true)
     setProcessingError(null)
+    setLiveEvents([])
     setDocument(prev => ({ ...prev, status: 'processing' }))
 
     const res = await fetch('/api/process-document', {
@@ -68,38 +126,14 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ document_id: doc.id }),
     })
-    const data = await res.json()
 
     if (!res.ok) {
+      const data = await res.json()
       setProcessingError(data.error ?? 'Processing failed')
       setDocument(prev => ({ ...prev, status: 'failed' }))
-    } else {
-      setDocument(prev => ({ ...prev, status: 'review_required' }))
-      setExtractionMeta({
-        id: '',
-        document_id: doc.id,
-        job_id: data.job_id,
-        model_name: 'claude-opus-4-8',
-        model_version: null,
-        prompt_version: '1.0',
-        extraction_timestamp: new Date().toISOString(),
-        sections_count: data.counts?.sections ?? 0,
-        clauses_count: data.counts?.clauses ?? 0,
-        requirements_count: data.counts?.requirements ?? 0,
-        tables_count: data.counts?.tables ?? 0,
-        definitions_count: data.counts?.definitions ?? 0,
-        overall_confidence: null,
-        extraction_notes: null,
-        created_at: new Date().toISOString(),
-      })
-      // Refresh jobs list
-      const jobsRes = await fetch(`/api/jobs?document_id=${doc.id}`)
-      if (jobsRes.ok) {
-        const { jobs: refreshed } = await jobsRes.json()
-        if (refreshed) { setJobs(refreshed); setOpenJobId(refreshed[0]?.id ?? null) }
-      }
+      setProcessing(false)
     }
-    setProcessing(false)
+    // On success, polling loop takes over and updates state
   }
 
   const currentStageIdx = STATUS_ORDER[document.status] ?? 0
@@ -121,23 +155,12 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
       </div>
 
       {/* Upload success banner */}
-      {justUploaded && (
+      {justUploaded && !isActivelyProcessing && (
         <div className="mb-6 flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
           <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
           <div>
             <p className="text-sm font-medium text-green-800">Upload complete</p>
-            <p className="text-xs text-green-700 mt-0.5">AI extraction is running. This page will update when complete.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Processing banner */}
-      {processing && (
-        <div className="mb-6 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-          <Cpu className="h-5 w-5 text-blue-500 flex-shrink-0 animate-pulse" />
-          <div>
-            <p className="text-sm font-medium text-blue-800">AI extraction in progress</p>
-            <p className="text-xs text-blue-700 mt-0.5">Converting document and extracting clauses, requirements, tables and definitions. This may take up to a minute.</p>
+            <p className="text-xs text-green-700 mt-0.5">AI extraction is running in the background.</p>
           </div>
         </div>
       )}
@@ -218,7 +241,7 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
                     }`}>
                       {done ? <CheckCircle className="h-4 w-4" /> :
                        failed ? <AlertCircle className="h-4 w-4" /> :
-                       active ? <Clock className="h-4 w-4" /> :
+                       active ? <Clock className="h-4 w-4 animate-pulse" /> :
                        idx + 1}
                     </div>
                     <p className={`text-xs mt-1.5 font-medium text-center leading-tight ${
@@ -237,6 +260,53 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
           </div>
         </CardContent>
       </Card>
+
+      {/* Live progress panel */}
+      {isActivelyProcessing && (
+        <Card className="mb-6 border-blue-200 bg-blue-50/30">
+          <CardContent className="py-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Cpu className="h-4 w-4 text-[#007ea7] animate-pulse" />
+              <p className="text-sm font-medium text-[#003459]">AI extraction in progress</p>
+              <span className="text-xs text-gray-400">— you can navigate away, this runs in the background</span>
+            </div>
+            <div
+              ref={liveLogRef}
+              className="bg-[#00171f] rounded-lg px-4 py-3 h-48 overflow-y-auto font-mono text-xs space-y-1"
+            >
+              {liveEvents.length === 0 ? (
+                <p className="text-gray-500">Waiting for pipeline to start…</p>
+              ) : (
+                liveEvents.map((evt, i) => (
+                  <div key={evt.id ?? i} className="flex items-start gap-2">
+                    <span className="text-gray-500 flex-shrink-0">
+                      {new Date(evt.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                    <span className={`flex-shrink-0 ${
+                      evt.event_type === 'error' ? 'text-red-400' :
+                      evt.event_type === 'success' ? 'text-green-400' :
+                      'text-[#00a8e8]'
+                    }`}>›</span>
+                    <span className={
+                      evt.event_type === 'error' ? 'text-red-300' :
+                      evt.event_type === 'success' ? 'text-green-300' :
+                      'text-gray-200'
+                    }>{evt.message}</span>
+                  </div>
+                ))
+              )}
+              {/* Blinking cursor */}
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500">
+                  {new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+                <span className="text-[#00a8e8]">›</span>
+                <span className="inline-block w-2 h-3.5 bg-[#007ea7] animate-pulse" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Extraction results panel */}
       {showExtractionPanel && (
