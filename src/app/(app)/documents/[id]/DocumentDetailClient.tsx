@@ -12,7 +12,8 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import type { Document, DocumentProcessingJob, AiExtractionMetadata } from '@/lib/types'
+import type { Document, DocumentProcessingJob, AiExtractionMetadata, DocumentSection, Clause, RequirementMaster, DocumentTable, DocumentDefinition } from '@/lib/types'
+import { ExtractionReview } from './ExtractionReview'
 
 const PIPELINE_STAGES = [
   { key: 'uploaded', label: 'Uploaded' },
@@ -31,9 +32,14 @@ interface Props {
   initialJobs: DocumentProcessingJob[]
   canManage: boolean
   extractionMeta: AiExtractionMetadata | null
+  extractedSections: DocumentSection[]
+  extractedClauses: Clause[]
+  extractedRequirements: RequirementMaster[]
+  extractedTables: DocumentTable[]
+  extractedDefinitions: DocumentDefinition[]
 }
 
-export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMeta: initialMeta }: Props) {
+export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMeta: initialMeta, extractedSections, extractedClauses, extractedRequirements, extractedTables, extractedDefinitions }: Props) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const justUploaded = searchParams.get('uploaded') === '1'
@@ -372,8 +378,19 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
         </Card>
       </div>
 
+      {/* Extracted content review */}
+      {isReviewReady && (
+        <ExtractionReview
+          sections={extractedSections}
+          clauses={extractedClauses}
+          requirements={extractedRequirements}
+          tables={extractedTables}
+          definitions={extractedDefinitions}
+        />
+      )}
+
       {/* Job history */}
-      <div>
+      <div className="mt-8">
         <h2 className="text-lg font-semibold text-[#00171f] mb-4">Processing history</h2>
         {!jobs.length ? (
           <div className="bg-white border border-gray-200 rounded-lg px-4 py-8 text-center text-gray-400 text-sm">

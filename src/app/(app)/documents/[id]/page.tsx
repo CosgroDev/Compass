@@ -44,6 +44,19 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
     .limit(1)
     .maybeSingle()
 
+  const isReviewReady = ['review_required', 'completed', 'published'].includes(doc.status)
+
+  // Only fetch extracted content when ready
+  const [sections, clauses, requirements, tables, definitions] = isReviewReady
+    ? await Promise.all([
+        supabase.from('document_sections').select('*').eq('document_id', id).order('order_index'),
+        supabase.from('clauses').select('*').eq('document_id', id).order('order_index'),
+        supabase.from('requirement_masters').select('*').eq('document_id', id).order('created_at'),
+        supabase.from('document_tables').select('*').eq('document_id', id).order('table_number'),
+        supabase.from('document_definitions').select('*').eq('document_id', id).order('term'),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }]
+
   const canManage = ['platform_admin', 'tenant_admin', 'compliance_manager', 'contributor'].includes(profile.role)
 
   return (
@@ -52,6 +65,11 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
       initialJobs={jobs ?? []}
       canManage={canManage}
       extractionMeta={extractionMeta ?? null}
+      extractedSections={sections.data ?? []}
+      extractedClauses={clauses.data ?? []}
+      extractedRequirements={requirements.data ?? []}
+      extractedTables={tables.data ?? []}
+      extractedDefinitions={definitions.data ?? []}
     />
   )
 }
