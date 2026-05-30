@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Building2, Plus, X, Pencil } from 'lucide-react'
@@ -20,8 +19,6 @@ export function TenantsClient({ initialTenants }: Props) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const supabase = createClient()
-
   function openCreate() {
     setEditTenant(null); setName(''); setSlug(''); setError(''); setShowForm(true)
   }
@@ -39,23 +36,22 @@ export function TenantsClient({ initialTenants }: Props) {
     if (!name.trim() || !slug.trim()) return
     setLoading(true); setError('')
 
+    const res = await fetch('/api/admin/tenants', {
+      method: editTenant ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editTenant
+        ? { id: editTenant.id, name, slug }
+        : { name, slug }
+      ),
+    })
+
+    const json = await res.json()
+    if (!res.ok) { setError(json.error ?? 'Failed to save tenant'); setLoading(false); return }
+
     if (editTenant) {
-      const { data, error: err } = await supabase
-        .from('tenants')
-        .update({ name: name.trim(), slug: slug.trim() })
-        .eq('id', editTenant.id)
-        .select()
-        .single()
-      if (err) { setError(err.message); setLoading(false); return }
-      setTenants(prev => prev.map(t => t.id === editTenant.id ? data : t))
+      setTenants(prev => prev.map(t => t.id === editTenant.id ? json.tenant : t))
     } else {
-      const { data, error: err } = await supabase
-        .from('tenants')
-        .insert({ name: name.trim(), slug: slug.trim() })
-        .select()
-        .single()
-      if (err) { setError(err.message); setLoading(false); return }
-      setTenants(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+      setTenants(prev => [...prev, json.tenant].sort((a, b) => a.name.localeCompare(b.name)))
     }
 
     setLoading(false); setShowForm(false)
@@ -63,13 +59,13 @@ export function TenantsClient({ initialTenants }: Props) {
 
   async function handleToggleStatus(t: Tenant) {
     const newStatus = t.status === 'active' ? 'inactive' : 'active'
-    const { data, error: err } = await supabase
-      .from('tenants')
-      .update({ status: newStatus })
-      .eq('id', t.id)
-      .select()
-      .single()
-    if (!err && data) setTenants(prev => prev.map(x => x.id === t.id ? data : x))
+    const res = await fetch('/api/admin/tenants', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: t.id, status: newStatus }),
+    })
+    const json = await res.json()
+    if (res.ok) setTenants(prev => prev.map(x => x.id === t.id ? json.tenant : x))
   }
 
   return (
@@ -84,7 +80,6 @@ export function TenantsClient({ initialTenants }: Props) {
         </Button>
       </div>
 
-      {/* Form modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
@@ -160,9 +155,7 @@ export function TenantsClient({ initialTenants }: Props) {
                     </button>
                     <button
                       onClick={() => handleToggleStatus(t)}
-                      className={`text-xs font-medium transition-colors ${
-                        t.status === 'active' ? 'text-gray-400 hover:text-red-600' : 'text-gray-400 hover:text-green-600'
-                      }`}
+                      className={`text-xs font-medium transition-colors ${t.status === 'active' ? 'text-gray-400 hover:text-red-600' : 'text-gray-400 hover:text-green-600'}`}
                     >
                       {t.status === 'active' ? 'Deactivate' : 'Activate'}
                     </button>
