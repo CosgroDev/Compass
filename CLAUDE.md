@@ -29,49 +29,61 @@ Requirements-first architecture. Built with Next.js 15, Supabase, Tailwind CSS v
 ## Live environment
 - **Vercel URL:** `https://compass-qgcxa5khc-dale-cosgroves-projects.vercel.app`
 - Vercel auto-deploys on push to `claude/beautiful-bell-t8u39`
-- Env vars set in Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- **Still needed in Vercel:** `SUPABASE_SERVICE_ROLE_KEY` (required for admin user creation API)
+- Env vars set in Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 
 ---
 
-## Test user
-- **Email:** cosgrdale@gmail.com
-- **Role:** platform_admin
-- **Tenant:** FoodRisk Compass (slug: `foodrisk-compass`)
+## Accounts
+- **System owner:** `dale@cgrv.co.uk` — ultimate owner, can manage tenants, only one who can assign Platform Admin role
+- **Test user:** `cosgrdale@gmail.com` — platform_admin, tenant: FoodRisk Compass (slug: `foodrisk-compass`)
+
+---
+
+## DB migrations applied
+| # | Name | Description |
+|---|------|-------------|
+| 001 | `001_core_tenant_auth` | `tenants`, `sites`, `user_profiles` + RLS |
+| 002 | `002_knowledge_sources` | `knowledge_sources`, `knowledge_assets`, `tenant_knowledge_access` + RLS |
+| 003 | `003_grant_permissions` | Role grants for anon/authenticated |
+| 004 | `007_document_processing` | `documents`, `document_processing_jobs`, `document_processing_events` + RLS; storage buckets |
+| 005 | `008_system_owner` | `is_system_owner` flag on `user_profiles`; `get_my_tenant_id()` and `is_system_owner()` security definer functions; tenants insert/update policies |
+| 006 | Various RLS fixes | `get_my_tenant_id()` function; admin update policy for user_profiles; system owner flag |
 
 ---
 
 ## Sprint status
 
 ### ✅ Sprint 1 — App Shell, Auth, Tenants & Sites (COMPLETE)
-- Next.js project setup, Supabase SSR auth, middleware route protection
+- Next.js 15 + Supabase SSR auth, middleware route protection
 - Login page with forgot password
 - Dashboard with stats cards and module navigation
-- Admin layout with Users / Sites tab navigation
-- Users: list, add, change role, deactivate/reactivate
-- Sites: list active, add, edit, archive (archived collapsed at bottom)
-- DB migration `001_core_tenant_auth`: `tenants`, `sites`, `user_profiles` + RLS
+- Admin layout with Users / Sites / Tenants (system owner only) tab navigation
+- **Users:** list active/deactivated, add (invite), change role, change name, deactivate/reactivate
+  - System owner grouped view: all tenants shown as collapsible accordion
+  - Platform Admin role restricted to system owner assignment only
+  - System owner row: cannot be deactivated or have name/role changed by others
+- **Sites:** list active/archived, add, edit, archive/restore
+  - System owner grouped view: all tenants shown as collapsible accordion
+- **Tenants (system owner only):** list, add, edit, activate/deactivate
+  - Tenant CRUD via `/api/admin/tenants` (service role, bypasses RLS)
+- **Profile page** (`/profile`): view account details, edit own name, change password
 
 ### ✅ Sprint 2 — Knowledge Sources & Knowledge Assets (COMPLETE)
-- Knowledge Sources list (name, type, active version, latest version, access status)
-- "Newer version available" warning banner
-- Knowledge Source detail: metadata, asset list, set active version
+- Knowledge Sources list: name, type, owner/body, active version, latest version, access status
+- Edit, archive/restore, delete (only if no assets and no documents) per source
+- "Newer version available" amber warning banner
+- Knowledge Source detail: metadata cards, asset list, set active version
 - Add knowledge asset modal (title, version, issue date, effective date)
 - Knowledge Asset detail page
 - Licensing framework (`requires_license` flag, `tenant_knowledge_access` table)
-- DB migration `002_knowledge_sources`: `knowledge_sources`, `knowledge_assets`, `tenant_knowledge_access` + RLS
-- DB migration `003_grant_permissions`: role grants for anon/authenticated
 
-### 🔲 Sprint 3 — Document Upload & Processing Pipeline (NOT STARTED)
-Key deliverables:
-- File upload (PDF, DOCX, Markdown) to Supabase Storage
+### ✅ Sprint 3 — Document Upload & Processing Pipeline (COMPLETE)
 - Storage buckets: `source-documents`, `canonical-markdown`, `extracted-assets`
-- Document library page (`/documents`)
-- Upload page (`/documents/upload`) — select source, select asset, upload file
-- Document detail/status page (`/documents/[id]`)
-- DB migration `003_document_processing`: `documents`, `document_processing_jobs`, `document_processing_events`
-- Processing statuses: Uploaded → Queued → Processing → Completed / Failed / Review Required / Published
-- Async job tracking, error logging, reprocessing support
+- **`/documents`:** library table (title, source, owner/body, version, status, uploader, date); delete with storage cleanup
+- **`/documents/upload`:** select source + asset, file drag-drop (PDF, DOCX, Markdown ≤50 MB), title auto-filled from filename
+- **`/documents/[id]`:** pipeline progress indicator (Uploaded → Queued → Processing → Completed), job history accordion, event audit trail, reprocess button, delete
+- Document delete via `/api/documents` (service role — removes storage file + cascades DB records)
+- Processing statuses: `uploaded`, `queued`, `processing`, `completed`, `failed`, `review_required`, `published`
 
 ### 🔲 Sprint 4 — AI Extraction Engine (NOT STARTED)
 Key deliverables:
@@ -83,7 +95,7 @@ Key deliverables:
 
 ---
 
-## Source documents (uploaded by user)
+## Source documents
 All stored in `/root/.claude/uploads/2f947cd3-2dcb-48c0-9aef-ca029e343185/`:
 - `PRD.md` — Full product requirements document
 - `claudebuildrules.md` — Build rules (follow these strictly)
@@ -91,8 +103,88 @@ All stored in `/root/.claude/uploads/2f947cd3-2dcb-48c0-9aef-ca029e343185/`:
 - `AIextractionspecification.md` — AI extraction standards
 - `sprint1.md` — Sprint 1 spec (complete)
 - `sprint2.md` — Sprint 2 spec (complete)
-- `sprint3.md` — Sprint 3 spec (next)
-- `sprint4.md` — Sprint 4 spec (after sprint 3)
+- `sprint3.md` — Sprint 3 spec (complete)
+- `sprint4.md` — Sprint 4 spec (next)
+
+---
+
+## Architecture patterns (critical — read before making changes)
+
+### RLS & server-side admin operations
+The browser Supabase client always runs under RLS. For operations that need to bypass RLS (tenant CRUD, document deletion, user creation), use a **server-side API route** with the service role key:
+- `/api/admin/invite-user` — create users (service role)
+- `/api/admin/tenants` — create/update tenants (service role)
+- `/api/documents` — delete documents + storage files (service role)
+
+### System owner
+- Identified by `user_profiles.is_system_owner = true`
+- Helper function: `public.is_system_owner()` (security definer)
+- Only system owner can assign `platform_admin` role
+- System owner sees all tenants' users and sites grouped by tenant in admin
+
+### RLS circular reference fix
+`user_profiles` SELECT/UPDATE policies use `public.get_my_tenant_id()` (security definer) rather than an inline subquery, to avoid the circular reference where RLS blocks the subquery used to evaluate RLS.
+
+### Soft delete pattern
+- Sites: `status = 'archived'` — collapsible section at bottom
+- Users: `status = 'inactive'` — collapsible section at bottom
+- Knowledge Sources: `status = 'archived'` — collapsible section at bottom; hard delete only if zero assets and zero documents
+
+---
+
+## Key files
+```
+src/
+  app/
+    (app)/
+      layout.tsx                    # Sidebar + TopBar shell
+      dashboard/page.tsx            # Stats + module cards
+      admin/
+        layout.tsx                  # Server: fetches is_system_owner, renders AdminLayoutClient
+        AdminLayoutClient.tsx       # Client: Users / Sites / Tenants tabs
+        users/page.tsx              # Server: fetches users (admin client for system owner)
+        users/UsersClient.tsx       # Client: grouped or flat view, invite, name edit, role change
+        sites/page.tsx              # Server: fetches sites (admin client for system owner)
+        sites/SitesClient.tsx       # Client: grouped or flat view, add/edit/archive
+        tenants/page.tsx            # Server: fetches all tenants via admin client
+        tenants/TenantsClient.tsx   # Client: add/edit/deactivate tenants
+      profile/
+        page.tsx                    # Server: fetches profile
+        ProfileClient.tsx           # Client: name edit, change password
+      knowledge-sources/
+        page.tsx                    # Server: fetches sources with assets + documents
+        KnowledgeSourcesClient.tsx  # Client: list, add, edit, archive, delete
+        [id]/page.tsx               # Server: source detail
+        [id]/KnowledgeSourceDetailClient.tsx
+      knowledge-assets/[id]/page.tsx
+      documents/
+        page.tsx                    # Server: fetches documents with joins
+        DocumentsClient.tsx         # Client: list with delete
+        upload/page.tsx             # Server: fetches sources for selector
+        upload/UploadClient.tsx     # Client: upload form → storage + DB + job
+        [id]/page.tsx               # Server: document + jobs
+        [id]/DocumentDetailClient.tsx # Client: pipeline, jobs, reprocess, delete
+    (auth)/login/page.tsx
+    api/
+      admin/invite-user/route.ts    # POST: create auth user + profile (service role)
+      admin/tenants/route.ts        # POST/PATCH: tenant CRUD (service role)
+      documents/route.ts            # DELETE: remove doc + storage file (service role)
+  components/
+    layout/Sidebar.tsx              # Left nav — Documents now active (Sprint 3)
+    layout/TopBar.tsx               # Top bar — user menu with Change password link
+    ui/Badge.tsx                    # Status badges incl. document statuses
+    ui/Button.tsx
+    ui/Card.tsx
+  lib/
+    supabase/client.ts
+    supabase/server.ts
+    supabase/middleware.ts
+    types.ts                        # Tenant, Site, UserProfile, KnowledgeSource,
+                                    # KnowledgeAsset, TenantKnowledgeAccess,
+                                    # Document, DocumentProcessingJob,
+                                    # DocumentProcessingEvent
+  middleware.ts
+```
 
 ---
 
@@ -107,38 +199,7 @@ All stored in `/root/.claude/uploads/2f947cd3-2dcb-48c0-9aef-ca029e343185/`:
 
 - Font: Inter
 - Sentence case on all UI labels, buttons, modals
-- Status badges defined in `globals.css` (badge-active, badge-approved, badge-draft, etc.)
-
----
-
-## Key files
-```
-src/
-  app/
-    (app)/              # Authenticated app shell
-      layout.tsx        # Sidebar + TopBar wrapper
-      dashboard/        # Dashboard page
-      admin/
-        layout.tsx      # Admin sub-nav (Users / Sites tabs)
-        users/          # User management
-        sites/          # Site management
-      knowledge-sources/  # Sprint 2 pages
-      knowledge-assets/   # Sprint 2 asset detail
-    (auth)/login/       # Login page
-    api/admin/          # Server-side admin API routes
-  components/
-    layout/Sidebar.tsx  # Left nav (#00171f)
-    layout/TopBar.tsx   # Top bar with user menu
-    ui/Badge.tsx        # Status badges
-    ui/Button.tsx       # Primary/secondary/destructive
-    ui/Card.tsx         # Card/CardHeader/CardContent
-  lib/
-    supabase/client.ts  # Browser Supabase client
-    supabase/server.ts  # Server Supabase client
-    supabase/middleware.ts # Auth middleware
-    types.ts            # Shared TypeScript types
-  middleware.ts         # Route protection
-```
+- Status badges defined in `globals.css`
 
 ---
 
