@@ -159,26 +159,56 @@ Rules:
 }
 
 async function extractTablesAndDefinitions(markdown: string): Promise<{ tables: ExtractedTable[]; definitions: ExtractedDefinition[] }> {
-  // Only send portions likely to contain tables and definitions
-  const text = markdown.slice(0, 60000)
+  // Run tables and definitions as separate calls — combined output is too large for big standards
+  const [tables, definitions] = await Promise.all([
+    extractTables(markdown),
+    extractDefinitions(markdown),
+  ])
+  return { tables, definitions }
+}
+
+async function extractTables(markdown: string): Promise<ExtractedTable[]> {
+  // Ask Claude for markdown-only tables (no structured_json — we parse that ourselves)
+  const text = markdown.slice(0, 80000)
   const response = await callClaude(
-    `Extract all tables and defined terms from this compliance document.
+    `Extract all tables from this compliance document as markdown.
 
-Return JSON: { "tables": [...], "definitions": [...] }
-
-Table fields: { caption (or null), section_number (or null), markdown_content (full markdown table), structured_json: { headers: string[], rows: string[][] }, confidence_score }
-Definition fields: { term, definition, reference (clause number or null), confidence_score }
+Return a JSON array of table objects. Each object:
+{ "caption": "title or null", "section_number": "clause ref or null", "markdown_content": "full markdown table string", "confidence_score": 0.0-1.0 }
 
 Rules:
-- Do NOT flatten tables into plain text. Preserve all rows and columns.
-- Only extract terms that are formally defined in the document.`,
+- Preserve every row and column exactly.
+- Do NOT flatten tables into prose.
+- markdown_content must be a valid markdown table starting with |`,
     `Document:\n---\n${text}\n---`
   )
   const parsed = parseJson(response)
-  return {
-    tables: Array.isArray(parsed.tables) ? parsed.tables : [],
-    definitions: Array.isArray(parsed.definitions) ? parsed.definitions : [],
-  }
+  const raw: Array<{ caption?: string; section_number?: string; markdown_content: string; confidence_score?: number }> =
+    Array.isArray(parsed) ? parsed : (parsed.tables ?? [])
+
+  // Parse markdown tables into structured_json ourselves
+  return raw.map(t => ({
+    caption: t.caption ?? null,
+    section_number: t.section_number ?? null,
+    markdown_content: t.markdown_content,
+    structured_json: parseMarkdownTable(t.markdown_content),
+    confidence_score: t.confidence_score ?? 0.8,
+  }))
+}
+
+async function extractDefinitions(markdown: string): Promise<ExtractedDefinition[]> {
+  const text = markdown.slice(0, 80000)
+  const response = await callClaude(
+    `Extract all formally defined terms from this compliance document.
+
+Return a JSON array of definition objects. Each object:
+{ "term": "Defined Term", "definition": "The definition text", "reference": "clause number or null", "confidence_score": 0.0-1.0 }
+
+Only include terms that are explicitly defined in a definitions section or glossary.`,
+    `Document:\n---\n${text}\n---`
+  )
+  const parsed = parseJson(response)
+  return Array.isArray(parsed) ? parsed : (parsed.definitions ?? [])
 }
 
 // --- Helpers ---
@@ -224,6 +254,21 @@ function parseJson(text: string): ReturnType<typeof JSON.parse> {
   } catch {
     throw new Error(`Malformed JSON from Claude. First 200 chars: ${jsonStr.slice(0, 200)}`)
   }
+}
+
+function parseMarkdownTable(markdown: string): { headers: string[]; rows: string[][] } {
+  const lines = markdown.split('\n').map(l => l.trim()).filter(Boolean)
+  const tableLines = lines.filter(l => l.startsWith('|'))
+  if (tableLines.length < 2) return { headers: [], rows: [] }
+
+  const parseRow = (line: string) =>
+    line.split('|').map(c => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length - 1)
+
+  const headers = parseRow(tableLines[0])
+  // Skip separator row (---)
+  const rows = tableLines.slice(2).map(parseRow)
+
+  return { headers, rows }
 }
 
 function chunkMarkdown(markdown: string): string[] {
