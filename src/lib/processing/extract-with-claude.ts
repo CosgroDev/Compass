@@ -155,7 +155,8 @@ ${markdown.slice(0, 80000)}
 ---`
 
 export async function extractWithClaude(markdown: string): Promise<ExtractionResult> {
-  const message = await getClient().messages.create({
+  // Use streaming — required for long-running extraction jobs
+  const stream = await getClient().messages.stream({
     model: MODEL,
     max_tokens: 32000,
     system: SYSTEM_PROMPT,
@@ -167,6 +168,7 @@ export async function extractWithClaude(markdown: string): Promise<ExtractionRes
     ],
   })
 
+  const message = await stream.finalMessage()
   const content = message.content[0]
   if (content.type !== 'text') {
     throw new Error('Unexpected response type from Claude')
