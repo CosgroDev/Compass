@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
 import { TenantsClient } from './TenantsClient'
 
@@ -15,7 +16,11 @@ export default async function TenantsPage() {
 
   if (!profile?.is_system_owner) redirect('/admin/users')
 
-  const { data: tenants } = await supabase
+  const admin = createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  const { data: tenants } = await admin
     .from('tenants')
     .select('*')
     .order('name')
