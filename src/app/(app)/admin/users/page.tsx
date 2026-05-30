@@ -9,7 +9,7 @@ export default async function UsersPage() {
 
   const { data: profile } = await supabase
     .from('user_profiles')
-    .select('tenant_id, role')
+    .select('tenant_id, role, is_system_owner')
     .eq('id', user.id)
     .single()
 
@@ -20,6 +20,7 @@ export default async function UsersPage() {
     .order('created_at', { ascending: false })
 
   const canManage = ['platform_admin', 'tenant_admin'].includes(profile?.role ?? '')
+  const isSystemOwner = profile?.is_system_owner ?? false
 
   return (
     <UsersClient
@@ -27,6 +28,7 @@ export default async function UsersPage() {
       currentUserId={user.id}
       tenantId={profile?.tenant_id ?? ''}
       canManage={canManage}
+      isSystemOwner={isSystemOwner}
     />
   )
 }

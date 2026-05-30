@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
   const { data: callerProfile } = await supabase
     .from('user_profiles')
-    .select('tenant_id, role')
+    .select('tenant_id, role, is_system_owner')
     .eq('id', user.id)
     .single()
 
@@ -20,6 +20,11 @@ export async function POST(req: NextRequest) {
 
   const { email, fullName, role, tenantId } = await req.json()
   if (!email || !tenantId) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+
+  // Only the system owner can assign platform_admin
+  if (role === 'platform_admin' && !callerProfile?.is_system_owner) {
+    return NextResponse.json({ error: 'Only the system owner can assign the Platform Admin role' }, { status: 403 })
+  }
 
   // Use service role to create the user
   const adminSupabase = createAdminClient(

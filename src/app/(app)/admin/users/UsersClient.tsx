@@ -7,25 +7,26 @@ import { Button } from '@/components/ui/Button'
 import { Users, Plus, X, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import type { UserProfile, Role } from '@/lib/types'
 
-const ROLES: { value: Role; label: string }[] = [
-  { value: 'platform_admin', label: 'Platform Admin' },
-  { value: 'tenant_admin', label: 'Tenant Admin' },
-  { value: 'compliance_manager', label: 'Compliance Manager' },
-  { value: 'contributor', label: 'Contributor' },
-  { value: 'viewer', label: 'Viewer' },
-  { value: 'external_auditor', label: 'External Auditor' },
+const ALL_ROLES: { value: Role; label: string; systemOwnerOnly: boolean }[] = [
+  { value: 'platform_admin', label: 'Platform Admin', systemOwnerOnly: true },
+  { value: 'tenant_admin', label: 'Tenant Admin', systemOwnerOnly: false },
+  { value: 'compliance_manager', label: 'Compliance Manager', systemOwnerOnly: false },
+  { value: 'contributor', label: 'Contributor', systemOwnerOnly: false },
+  { value: 'viewer', label: 'Viewer', systemOwnerOnly: false },
+  { value: 'external_auditor', label: 'External Auditor', systemOwnerOnly: false },
 ]
 
-const roleLabel = (role: string) => ROLES.find(r => r.value === role)?.label ?? role
+const roleLabel = (role: string) => ALL_ROLES.find(r => r.value === role)?.label ?? role
 
 interface Props {
   initialUsers: UserProfile[]
   currentUserId: string
   tenantId: string
   canManage: boolean
+  isSystemOwner: boolean
 }
 
-export function UsersClient({ initialUsers, currentUserId, tenantId, canManage }: Props) {
+export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, isSystemOwner }: Props) {
   const [users, setUsers] = useState<UserProfile[]>(initialUsers)
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
@@ -94,22 +95,32 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage }
     </thead>
   )
 
+  // Roles available to the current user when inviting / changing roles
+  const assignableRoles = ALL_ROLES.filter(r => isSystemOwner || !r.systemOwnerOnly)
+
   const UserRow = ({ u }: { u: UserProfile }) => (
     <tr className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${u.id === currentUserId ? 'bg-blue-50/20' : ''}`}>
       <td className="px-4 py-3">
-        <p className="font-medium text-[#00171f]">
-          {u.full_name ?? <span className="text-gray-400 italic">No name</span>}
-          {u.id === currentUserId && <span className="ml-2 text-xs text-gray-400">(you)</span>}
-        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="font-medium text-[#00171f]">
+            {u.full_name ?? <span className="text-gray-400 italic">No name</span>}
+            {u.id === currentUserId && <span className="ml-2 text-xs text-gray-400">(you)</span>}
+          </p>
+          {u.is_system_owner && (
+            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 bg-[#003459] text-white rounded">
+              System owner
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3">
-        {canManage && u.id !== currentUserId ? (
+        {canManage && u.id !== currentUserId && !u.is_system_owner ? (
           <select
             value={u.role}
             onChange={e => handleChangeRole(u, e.target.value as Role)}
             className="text-sm border border-gray-200 rounded px-2 py-1 text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#007ea7]"
           >
-            {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            {assignableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         ) : (
           <span className="text-gray-600">{roleLabel(u.role)}</span>
@@ -120,7 +131,7 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage }
       </td>
       {canManage && (
         <td className="px-4 py-3 text-right">
-          {u.id !== currentUserId && (
+          {u.id !== currentUserId && !u.is_system_owner && (
             <button
               onClick={() => handleToggleStatus(u)}
               className={`text-xs font-medium transition-colors ${
@@ -191,7 +202,7 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage }
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role <span className="text-red-500">*</span></label>
                 <select value={inviteRole} onChange={e => setInviteRole(e.target.value as Role)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7]">
-                  {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                  {assignableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
               <p className="text-xs text-gray-500">

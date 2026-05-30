@@ -29,6 +29,7 @@ export interface UserProfile {
   full_name: string | null
   role: Role
   status: string
+  is_system_owner: boolean
   created_at: string
 }
 
