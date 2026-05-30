@@ -17,11 +17,9 @@ export default async function KnowledgeSourcesPage() {
     .from('knowledge_sources')
     .select(`
       *,
-      knowledge_assets (
-        id, version_label, status, is_active, issue_date, effective_date
-      )
+      knowledge_assets (id, version_label, status, is_active, issue_date, effective_date, created_at),
+      documents (id)
     `)
-    .eq('status', 'active')
     .order('name')
 
   const { data: accessRecords } = await supabase
