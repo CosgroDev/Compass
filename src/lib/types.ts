@@ -97,6 +97,90 @@ export interface DocumentProcessingEvent {
   created_at: string
 }
 
+export interface DocumentSection {
+  id: string
+  document_id: string
+  parent_id: string | null
+  section_number: string | null
+  title: string
+  content: string | null
+  level: number
+  order_index: number
+  confidence_score: number | null
+  created_at: string
+  subsections?: DocumentSection[]
+}
+
+export interface Clause {
+  id: string
+  document_id: string
+  section_id: string | null
+  clause_number: string | null
+  clause_text: string
+  order_index: number
+  confidence_score: number | null
+  created_at: string
+}
+
+export interface RequirementMaster {
+  id: string
+  document_id: string
+  clause_id: string | null
+  requirement_text: string
+  requirement_type: string | null
+  confidence_score: number | null
+  created_at: string
+}
+
+export interface RequirementVersion {
+  id: string
+  requirement_master_id: string
+  version_number: number
+  requirement_text: string
+  change_note: string | null
+  created_at: string
+}
+
+export interface DocumentTable {
+  id: string
+  document_id: string
+  section_id: string | null
+  table_number: number | null
+  caption: string | null
+  markdown_content: string
+  structured_json: { headers: string[]; rows: string[][] }
+  confidence_score: number | null
+  created_at: string
+}
+
+export interface DocumentDefinition {
+  id: string
+  document_id: string
+  term: string
+  definition: string
+  reference: string | null
+  confidence_score: number | null
+  created_at: string
+}
+
+export interface AiExtractionMetadata {
+  id: string
+  document_id: string
+  job_id: string | null
+  model_name: string
+  model_version: string | null
+  prompt_version: string
+  extraction_timestamp: string
+  sections_count: number
+  clauses_count: number
+  requirements_count: number
+  tables_count: number
+  definitions_count: number
+  overall_confidence: number | null
+  extraction_notes: string | null
+  created_at: string
+}
+
 export interface TenantKnowledgeAccess {
   id: string
   tenant_id: string

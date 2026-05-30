@@ -99,22 +99,15 @@ export function UploadClient({ sources, tenantId, userId }: Props) {
       setLoading(false); return
     }
 
-    // Create initial processing job
-    await supabase
-      .from('document_processing_jobs')
-      .insert({
-        document_id: doc.id,
-        job_type: 'full_pipeline',
-        status: 'queued',
-      })
-
-    // Update document status to queued
-    await supabase
-      .from('documents')
-      .update({ status: 'queued' })
-      .eq('id', doc.id)
-
+    // Navigate immediately — processing is triggered server-side
     router.push(`/documents/${doc.id}?uploaded=1`)
+
+    // Trigger AI extraction pipeline (fire and forget — user sees progress on detail page)
+    fetch('/api/process-document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_id: doc.id }),
+    }).catch(() => {/* background — errors visible on detail page */})
   }
 
   const formatSize = (bytes: number) => {

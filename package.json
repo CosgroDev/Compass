@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.100.1",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
     "@tailwindcss/postcss": "^4.3.0",
@@ -15,11 +16,17 @@
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "lucide-react": "^1.17.0",
+    "mammoth": "^1.12.0",
     "next": "^15.5.18",
+    "openai": "^6.39.1",
+    "pdf-parse": "^2.4.5",
     "postcss": "^8.5.15",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/pdf-parse": "^1.1.5"
   }
 }

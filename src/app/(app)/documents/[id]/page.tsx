@@ -36,6 +36,14 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
     .eq('document_id', id)
     .order('created_at', { ascending: false })
 
+  const { data: extractionMeta } = await supabase
+    .from('ai_extraction_metadata')
+    .select('*')
+    .eq('document_id', id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
   const canManage = ['platform_admin', 'tenant_admin', 'compliance_manager', 'contributor'].includes(profile.role)
 
   return (
@@ -43,6 +51,7 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
       doc={doc}
       initialJobs={jobs ?? []}
       canManage={canManage}
+      extractionMeta={extractionMeta ?? null}
     />
   )
 }
