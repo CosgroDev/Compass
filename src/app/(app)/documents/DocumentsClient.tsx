@@ -1,9 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { FileText, Plus } from 'lucide-react'
+import { FileText, Plus, Trash2 } from 'lucide-react'
 import type { Document } from '@/lib/types'
 
 interface Props {
@@ -12,6 +13,24 @@ interface Props {
 }
 
 export function DocumentsClient({ initialDocuments, canUpload }: Props) {
+  const [documents, setDocuments] = useState(initialDocuments)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete(doc: Document) {
+    setDeleting(true)
+    const res = await fetch('/api/documents', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: doc.id }),
+    })
+    if (res.ok) {
+      setDocuments(prev => prev.filter(d => d.id !== doc.id))
+    }
+    setDeleteConfirmId(null)
+    setDeleting(false)
+  }
+
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -43,7 +62,7 @@ export function DocumentsClient({ initialDocuments, canUpload }: Props) {
             </tr>
           </thead>
           <tbody>
-            {!initialDocuments.length ? (
+            {!documents.length ? (
               <tr>
                 <td colSpan={7} className="text-center py-12 text-gray-400">
                   <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
@@ -51,7 +70,7 @@ export function DocumentsClient({ initialDocuments, canUpload }: Props) {
                   {canUpload && <p className="text-xs mt-1">Upload your first compliance document to get started.</p>}
                 </td>
               </tr>
-            ) : initialDocuments.map(doc => (
+            ) : documents.map(doc => (
               <tr key={doc.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                 <td className="px-4 py-3">
                   <p className="font-medium text-[#00171f]">{doc.title}</p>
@@ -73,9 +92,39 @@ export function DocumentsClient({ initialDocuments, canUpload }: Props) {
                   {new Date(doc.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </td>
                 <td className="px-4 py-3">
-                  <Link href={`/documents/${doc.id}`} className="text-[#007ea7] hover:text-[#003459] text-xs font-medium">
-                    View
-                  </Link>
+                  <div className="flex items-center gap-3 justify-end">
+                    <Link href={`/documents/${doc.id}`} className="text-[#007ea7] hover:text-[#003459] text-xs font-medium">
+                      View
+                    </Link>
+                    {canUpload && (
+                      deleteConfirmId === doc.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs text-red-600">Delete?</span>
+                          <button
+                            onClick={() => handleDelete(doc)}
+                            disabled={deleting}
+                            className="text-xs font-medium text-red-600 hover:text-red-800 disabled:opacity-50"
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="text-xs text-gray-400 hover:text-gray-600"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteConfirmId(doc.id)}
+                          className="text-gray-400 hover:text-red-600 transition-colors"
+                          title="Delete document"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

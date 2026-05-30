@@ -6,8 +6,9 @@ import { createClient } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent } from '@/components/ui/Card'
-import { ArrowLeft, CheckCircle, AlertCircle, Clock, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowLeft, CheckCircle, AlertCircle, Clock, RefreshCw, ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { Document, DocumentProcessingJob } from '@/lib/types'
 
 const PIPELINE_STAGES = [
@@ -30,6 +31,7 @@ interface Props {
 
 export function DocumentDetailClient({ doc, initialJobs, canManage }: Props) {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const justUploaded = searchParams.get('uploaded') === '1'
   const supabase = createClient()
 
@@ -37,6 +39,19 @@ export function DocumentDetailClient({ doc, initialJobs, canManage }: Props) {
   const [jobs, setJobs] = useState(initialJobs)
   const [reprocessing, setReprocessing] = useState(false)
   const [openJobId, setOpenJobId] = useState<string | null>(initialJobs[0]?.id ?? null)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete() {
+    setDeleting(true)
+    const res = await fetch('/api/documents', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: doc.id }),
+    })
+    if (res.ok) router.push('/documents')
+    else setDeleting(false)
+  }
 
   async function handleReprocess() {
     setReprocessing(true)
@@ -102,11 +117,30 @@ export function DocumentDetailClient({ doc, initialJobs, canManage }: Props) {
             )}
           </div>
         </div>
-        {canManage && (isFailed || isCompleted) && (
-          <Button variant="secondary" onClick={handleReprocess} disabled={reprocessing}>
-            <RefreshCw className={`h-4 w-4 mr-1.5 ${reprocessing ? 'animate-spin' : ''}`} />
-            Reprocess
-          </Button>
+        {canManage && (
+          <div className="flex items-center gap-2">
+            {(isFailed || isCompleted) && (
+              <Button variant="secondary" onClick={handleReprocess} disabled={reprocessing}>
+                <RefreshCw className={`h-4 w-4 mr-1.5 ${reprocessing ? 'animate-spin' : ''}`} />
+                Reprocess
+              </Button>
+            )}
+            {deleteConfirm ? (
+              <div className="flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+                <span className="text-sm text-red-700">Delete this document?</span>
+                <button onClick={handleDelete} disabled={deleting}
+                  className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-50">
+                  {deleting ? 'Deleting…' : 'Yes, delete'}
+                </button>
+                <button onClick={() => setDeleteConfirm(false)} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
+              </div>
+            ) : (
+              <Button variant="secondary" onClick={() => setDeleteConfirm(true)}>
+                <Trash2 className="h-4 w-4 mr-1.5 text-red-500" />
+                Delete
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
