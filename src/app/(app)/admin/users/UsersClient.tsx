@@ -145,7 +145,7 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, 
                 </span>
               )}
             </div>
-            {canManage && (
+            {canManage && (!u.is_system_owner || u.id === currentUserId) && (
               <button onClick={() => startEditName(u)} className="text-gray-300 hover:text-[#007ea7] transition-colors flex-shrink-0" title="Edit name">
                 <Pencil className="h-3.5 w-3.5" />
               </button>
