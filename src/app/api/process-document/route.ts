@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { convertToMarkdown } from '@/lib/processing/convert-to-markdown'
 import { extractWithClaude } from '@/lib/processing/extract-with-claude'
 import { generateEmbeddings, EmbeddingInput } from '@/lib/processing/generate-embeddings'
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Document not found' }, { status: 404 })
   }
 
-  // Create a new processing job
+  // Create the processing job synchronously before responding
   const { data: job, error: jobErr } = await admin
     .from('document_processing_jobs')
     .insert({
@@ -64,7 +64,27 @@ export async function POST(req: NextRequest) {
   // Mark document as processing
   await admin.from('documents').update({ status: 'processing', updated_at: new Date().toISOString() }).eq('id', document_id)
 
-  // Clean up any previous extraction data for this document (reprocess scenario)
+  // Run the full pipeline AFTER the response is sent — browser navigation won't cancel it
+  after(async () => {
+    await runPipeline(admin, doc, document_id, jobId)
+  })
+
+  // Respond immediately so the client (and user) can navigate away
+  return NextResponse.json({ triggered: true, job_id: jobId })
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function runPipeline(
+  admin: any,
+  doc: { storage_path: string; file_type: string },
+  document_id: string,
+  jobId: string
+) {
+  const logEvent = async (event_type: string, message: string) => {
+    await admin.from('document_processing_events').insert({ job_id: jobId, event_type, message })
+  }
+
+  // Clean up any previous extraction data (reprocess scenario)
   await admin.from('document_sections').delete().eq('document_id', document_id)
   await admin.from('clauses').delete().eq('document_id', document_id)
   await admin.from('requirement_masters').delete().eq('document_id', document_id)
@@ -72,10 +92,6 @@ export async function POST(req: NextRequest) {
   await admin.from('document_definitions').delete().eq('document_id', document_id)
   await admin.from('requirement_embeddings').delete().eq('document_id', document_id)
   await admin.from('ai_extraction_metadata').delete().eq('document_id', document_id)
-
-  const logEvent = async (event_type: string, message: string) => {
-    await admin.from('document_processing_events').insert({ job_id: jobId, event_type, message })
-  }
 
   try {
     // Step 1: Download file from storage
@@ -146,7 +162,7 @@ export async function POST(req: NextRequest) {
     await logEvent('info', 'Storing extraction results')
     await storeExtraction(admin, document_id, jobId, extraction, embeddings)
 
-    // Step 6: Mark job and document complete
+    // Step 6: Complete
     await admin.from('document_processing_jobs').update({
       status: 'completed',
       completed_at: new Date().toISOString(),
@@ -158,19 +174,6 @@ export async function POST(req: NextRequest) {
     }).eq('id', document_id)
 
     await logEvent('success', 'Pipeline complete — document ready for review')
-
-    return NextResponse.json({
-      success: true,
-      job_id: jobId,
-      counts: {
-        sections: extraction.sections.length,
-        clauses: extraction.clauses.length,
-        requirements: extraction.requirements.length,
-        tables: extraction.tables.length,
-        definitions: extraction.definitions.length,
-        embeddings: embeddings.length,
-      },
-    })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
 
@@ -186,7 +189,5 @@ export async function POST(req: NextRequest) {
       status: 'failed',
       updated_at: new Date().toISOString(),
     }).eq('id', document_id)
-
-    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
