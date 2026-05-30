@@ -6,8 +6,11 @@ function getClient() {
   return _client
 }
 
-const PROMPT_VERSION = '1.0'
+const PROMPT_VERSION = '1.1'
 const MODEL = 'claude-opus-4-8'
+
+// Split markdown into chunks at section boundaries, max ~25k chars each
+const MAX_CHUNK_CHARS = 25000
 
 export interface ExtractedMetadata {
   title: string
@@ -74,130 +77,178 @@ export interface ExtractionResult {
   prompt_version: string
 }
 
-const SYSTEM_PROMPT = `You are a compliance document extraction specialist. Your task is to extract structured data from compliance and regulatory documents with high accuracy.
-
-Rules:
-- Do NOT rewrite requirement wording. Extract verbatim from the source.
-- Preserve numbering exactly as it appears in the document.
-- Clauses are immutable source records.
-- When a clause contains multiple requirements, create separate requirement entries.
-- Tables must be preserved with full structure.
-- Confidence scores: 0.0 (low) to 1.0 (high certainty).
-- Return ONLY valid JSON, no commentary.`
-
-const USER_PROMPT_TEMPLATE = (markdown: string) => `Extract all structured data from this compliance document.
-
-Return a JSON object with this exact structure:
-{
-  "metadata": {
-    "title": "document title",
-    "version": "version or null",
-    "issue_date": "YYYY-MM-DD or null",
-    "effective_date": "YYYY-MM-DD or null",
-    "document_type": "standard/regulation/guidance/policy or null",
-    "source_name": "issuing body or null",
-    "confidence_score": 0.0-1.0,
-    "extraction_notes": "any notes about extraction quality or null"
-  },
-  "sections": [
-    {
-      "section_number": "4.1 or null",
-      "title": "Section Title",
-      "content": "full section text or null",
-      "level": 1,
-      "order_index": 0,
-      "confidence_score": 0.0-1.0,
-      "subsections": []
-    }
-  ],
-  "clauses": [
-    {
-      "section_number": "4.1 or null",
-      "clause_number": "4.1.2 or null",
-      "clause_text": "verbatim clause text",
-      "order_index": 0,
-      "confidence_score": 0.0-1.0
-    }
-  ],
-  "requirements": [
-    {
-      "clause_number": "4.1.2 or null",
-      "requirement_text": "verbatim requirement text - do not rephrase",
-      "requirement_type": "requirement|record|monitoring|verification|validation|training|definition or null",
-      "confidence_score": 0.0-1.0
-    }
-  ],
-  "tables": [
-    {
-      "caption": "table title or null",
-      "section_number": "section reference or null",
-      "markdown_content": "| col1 | col2 |\\n|------|------|\\n| val1 | val2 |",
-      "structured_json": {
-        "headers": ["col1", "col2"],
-        "rows": [["val1", "val2"]]
-      },
-      "confidence_score": 0.0-1.0
-    }
-  ],
-  "definitions": [
-    {
-      "term": "Defined Term",
-      "definition": "The definition text",
-      "reference": "clause reference or null",
-      "confidence_score": 0.0-1.0
-    }
-  ]
-}
-
-Document:
----
-${markdown.slice(0, 80000)}
----`
-
 export async function extractWithClaude(markdown: string): Promise<ExtractionResult> {
-  // Use streaming — required for long-running extraction jobs
-  const stream = await getClient().messages.stream({
-    model: MODEL,
-    max_tokens: 32000,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: 'user',
-        content: USER_PROMPT_TEMPLATE(markdown),
-      },
-    ],
-  })
-
-  const message = await stream.finalMessage()
-  const content = message.content[0]
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from Claude')
-  }
-
-  const jsonText = extractJson(content.text)
-  let parsed: ReturnType<typeof JSON.parse>
-  try {
-    parsed = JSON.parse(jsonText)
-  } catch (e) {
-    const truncated = jsonText.slice(0, 200)
-    throw new Error(`Claude returned malformed JSON (stop_reason: ${message.stop_reason}). First 200 chars: ${truncated}`)
-  }
+  // Run all extractions — chunked where needed
+  const [metadata, sections, { clauses, requirements }, { tables, definitions }] = await Promise.all([
+    extractMetadata(markdown.slice(0, 8000)),
+    extractSections(markdown.slice(0, 40000)),
+    extractClausesAndRequirementsChunked(markdown),
+    extractTablesAndDefinitions(markdown),
+  ])
 
   return {
-    ...parsed,
+    metadata,
+    sections,
+    clauses,
+    requirements,
+    tables,
+    definitions,
     model_name: MODEL,
     prompt_version: PROMPT_VERSION,
   }
 }
 
-function extractJson(text: string): string {
-  // Strip markdown code fences if present
-  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
-  if (fenceMatch) return fenceMatch[1].trim()
+// --- Individual extraction calls ---
 
-  // Find first { to last }
-  const start = text.indexOf('{')
-  const end = text.lastIndexOf('}')
-  if (start === -1 || end === -1) throw new Error('No JSON object found in response')
-  return text.slice(start, end + 1)
+async function extractMetadata(text: string): Promise<ExtractedMetadata> {
+  const response = await callClaude(
+    'Extract document metadata only. Return JSON with exactly these fields: title, version, issue_date (YYYY-MM-DD or null), effective_date (YYYY-MM-DD or null), document_type (standard/regulation/guidance/policy or null), source_name (issuing body), confidence_score (0-1), extraction_notes (string or null).',
+    `Document start:\n---\n${text}\n---`
+  )
+  const parsed = parseJson(response)
+  return parsed as ExtractedMetadata
+}
+
+async function extractSections(text: string): Promise<ExtractedSection[]> {
+  const response = await callClaude(
+    'Extract the document section hierarchy only. Return a JSON array of sections. Each section: { section_number, title, content (brief summary or null), level (1-6), order_index, confidence_score (0-1), subsections: [] }. Preserve numbering exactly.',
+    `Document:\n---\n${text}\n---`
+  )
+  const parsed = parseJson(response)
+  return Array.isArray(parsed) ? parsed : (parsed.sections ?? [])
+}
+
+async function extractClausesAndRequirementsChunked(markdown: string): Promise<{ clauses: ExtractedClause[]; requirements: ExtractedRequirement[] }> {
+  const chunks = chunkMarkdown(markdown)
+  const allClauses: ExtractedClause[] = []
+  const allRequirements: ExtractedRequirement[] = []
+  let orderOffset = 0
+
+  // Process chunks sequentially to avoid rate limits
+  for (const chunk of chunks) {
+    const result = await extractClausesAndRequirements(chunk, orderOffset)
+    allClauses.push(...result.clauses)
+    allRequirements.push(...result.requirements)
+    orderOffset += result.clauses.length
+  }
+
+  return { clauses: allClauses, requirements: allRequirements }
+}
+
+async function extractClausesAndRequirements(text: string, orderOffset: number): Promise<{ clauses: ExtractedClause[]; requirements: ExtractedRequirement[] }> {
+  const response = await callClaude(
+    `Extract clauses and requirements verbatim from this section of a compliance document.
+
+Return JSON: { "clauses": [...], "requirements": [...] }
+
+Clause fields: { clause_number, section_number, clause_text (verbatim), order_index (starting at ${orderOffset}), confidence_score }
+Requirement fields: { clause_number, requirement_text (verbatim — do NOT rephrase), requirement_type (requirement/record/monitoring/verification/validation/training/definition or null), confidence_score }
+
+Rules:
+- Extract clause text verbatim. Never rephrase.
+- One requirement per SHALL/MUST/SHOULD obligation.
+- If a clause has multiple obligations, create multiple requirements.
+- requirement_type is advisory only.`,
+    `Document section:\n---\n${text}\n---`
+  )
+  const parsed = parseJson(response)
+  return {
+    clauses: Array.isArray(parsed.clauses) ? parsed.clauses : [],
+    requirements: Array.isArray(parsed.requirements) ? parsed.requirements : [],
+  }
+}
+
+async function extractTablesAndDefinitions(markdown: string): Promise<{ tables: ExtractedTable[]; definitions: ExtractedDefinition[] }> {
+  // Only send portions likely to contain tables and definitions
+  const text = markdown.slice(0, 60000)
+  const response = await callClaude(
+    `Extract all tables and defined terms from this compliance document.
+
+Return JSON: { "tables": [...], "definitions": [...] }
+
+Table fields: { caption (or null), section_number (or null), markdown_content (full markdown table), structured_json: { headers: string[], rows: string[][] }, confidence_score }
+Definition fields: { term, definition, reference (clause number or null), confidence_score }
+
+Rules:
+- Do NOT flatten tables into plain text. Preserve all rows and columns.
+- Only extract terms that are formally defined in the document.`,
+    `Document:\n---\n${text}\n---`
+  )
+  const parsed = parseJson(response)
+  return {
+    tables: Array.isArray(parsed.tables) ? parsed.tables : [],
+    definitions: Array.isArray(parsed.definitions) ? parsed.definitions : [],
+  }
+}
+
+// --- Helpers ---
+
+async function callClaude(systemPrompt: string, userMessage: string): Promise<string> {
+  const stream = await getClient().messages.stream({
+    model: MODEL,
+    max_tokens: 16000,
+    system: `You are a compliance document extraction specialist. Return ONLY valid JSON. No commentary, no markdown fences.\n\n${systemPrompt}`,
+    messages: [{ role: 'user', content: userMessage }],
+  })
+  const message = await stream.finalMessage()
+  if (message.stop_reason === 'max_tokens') {
+    throw new Error(`Claude hit max_tokens during extraction (${systemPrompt.slice(0, 60)}…). Document may be too large.`)
+  }
+  const content = message.content[0]
+  if (content.type !== 'text') throw new Error('Unexpected response type from Claude')
+  return content.text
+}
+
+function parseJson(text: string): ReturnType<typeof JSON.parse> {
+  // Strip markdown fences if present
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const raw = fenced ? fenced[1].trim() : text.trim()
+
+  // Find outermost JSON object or array
+  const objStart = raw.indexOf('{')
+  const arrStart = raw.indexOf('[')
+  let jsonStr: string
+
+  if (objStart === -1 && arrStart === -1) throw new Error('No JSON found in response')
+
+  if (arrStart !== -1 && (objStart === -1 || arrStart < objStart)) {
+    const end = raw.lastIndexOf(']')
+    jsonStr = raw.slice(arrStart, end + 1)
+  } else {
+    const end = raw.lastIndexOf('}')
+    jsonStr = raw.slice(objStart, end + 1)
+  }
+
+  try {
+    return JSON.parse(jsonStr)
+  } catch {
+    throw new Error(`Malformed JSON from Claude. First 200 chars: ${jsonStr.slice(0, 200)}`)
+  }
+}
+
+function chunkMarkdown(markdown: string): string[] {
+  if (markdown.length <= MAX_CHUNK_CHARS) return [markdown]
+
+  const chunks: string[] = []
+  const lines = markdown.split('\n')
+  let current = ''
+
+  for (const line of lines) {
+    // Start a new chunk at a heading boundary if current chunk is large enough
+    const isHeading = /^#{1,3}\s/.test(line) || /^\d+(\.\d+)?\s+[A-Z]/.test(line)
+    if (isHeading && current.length > MAX_CHUNK_CHARS * 0.6) {
+      if (current.trim()) chunks.push(current.trim())
+      current = line + '\n'
+    } else {
+      current += line + '\n'
+      // Hard split if chunk is too large and no heading found
+      if (current.length > MAX_CHUNK_CHARS) {
+        chunks.push(current.trim())
+        current = ''
+      }
+    }
+  }
+
+  if (current.trim()) chunks.push(current.trim())
+  return chunks
 }
