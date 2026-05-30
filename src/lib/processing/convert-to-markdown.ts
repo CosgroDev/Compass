@@ -1,8 +1,5 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const mammoth = require('mammoth')
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParseLib = require('pdf-parse')
-const pdfParse = pdfParseLib.default ?? pdfParseLib
 
 export async function convertToMarkdown(
   buffer: Buffer,
@@ -18,8 +15,11 @@ export async function convertToMarkdown(
   }
 
   if (fileType === 'pdf') {
-    const data = await pdfParse(buffer)
-    return pdfTextToMarkdown(data.text)
+    // Use unpdf — serverless-safe PDF extraction (no canvas dependency)
+    const { extractText } = await import('unpdf')
+    const uint8 = new Uint8Array(buffer)
+    const { text } = await extractText(uint8, { mergePages: true })
+    return pdfTextToMarkdown(text)
   }
 
   throw new Error(`Unsupported file type: ${fileType}`)
