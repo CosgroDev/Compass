@@ -56,6 +56,46 @@ export interface KnowledgeAsset {
   created_at: string
 }
 
+export interface Document {
+  id: string
+  tenant_id: string
+  knowledge_source_id: string | null
+  knowledge_asset_id: string | null
+  title: string
+  file_name: string
+  file_type: string
+  file_size_bytes: number | null
+  storage_path: string
+  status: string
+  uploaded_by: string | null
+  created_at: string
+  updated_at: string
+  // joined
+  knowledge_sources?: Pick<KnowledgeSource, 'id' | 'name'> | null
+  knowledge_assets?: Pick<KnowledgeAsset, 'id' | 'title' | 'version_label'> | null
+  user_profiles?: Pick<UserProfile, 'id' | 'full_name'> | null
+}
+
+export interface DocumentProcessingJob {
+  id: string
+  document_id: string
+  job_type: string
+  status: string
+  started_at: string | null
+  completed_at: string | null
+  error_message: string | null
+  created_at: string
+  document_processing_events?: DocumentProcessingEvent[]
+}
+
+export interface DocumentProcessingEvent {
+  id: string
+  job_id: string
+  event_type: string
+  message: string | null
+  created_at: string
+}
+
 export interface TenantKnowledgeAccess {
   id: string
   tenant_id: string

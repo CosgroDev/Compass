@@ -15,6 +15,16 @@ const statusMap: Record<string, string> = {
   pending: 'badge-pending',
   pending_review: 'badge-pending',
   not_required: 'badge-draft',
+  // document statuses
+  uploaded: 'badge-draft',
+  queued: 'badge-pending',
+  processing: 'badge-staging',
+  completed: 'badge-approved',
+  failed: 'badge-rejected',
+  published: 'badge-active',
+  // job statuses
+  running: 'badge-staging',
+  queued_job: 'badge-pending',
 }
 
 const labelMap: Record<string, string> = {
@@ -29,6 +39,13 @@ const labelMap: Record<string, string> = {
   pending: 'Pending',
   pending_review: 'Pending Review',
   not_required: 'Not Required',
+  uploaded: 'Uploaded',
+  queued: 'Queued',
+  processing: 'Processing',
+  completed: 'Completed',
+  failed: 'Failed',
+  published: 'Published',
+  running: 'Running',
 }
 
 export function Badge({ status, label }: BadgeProps) {

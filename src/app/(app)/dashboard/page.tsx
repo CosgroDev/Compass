@@ -26,9 +26,10 @@ export default async function DashboardPage() {
 
   const tenantId = profile?.tenant_id
 
-  const [{ count: sitesCount }, { count: sourcesCount }] = await Promise.all([
+  const [{ count: sitesCount }, { count: sourcesCount }, { count: documentsCount }] = await Promise.all([
     supabase.from('sites').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId ?? ''),
     supabase.from('knowledge_sources').select('*', { count: 'exact', head: true }),
+    supabase.from('documents').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId ?? ''),
   ])
 
   const tenantName = (profile as any)?.tenants?.name ?? 'Your Organisation'
@@ -37,7 +38,7 @@ export default async function DashboardPage() {
   const modules = [
     { label: 'Search', desc: 'Search compliance requirements', href: '/search', icon: Search, available: false },
     { label: 'Requirements', desc: 'Browse extracted requirements', href: '/requirements', icon: BookOpen, available: false },
-    { label: 'Documents', desc: 'Manage uploaded documents', href: '/documents', icon: FileText, available: false },
+    { label: 'Documents', desc: 'Manage uploaded documents', href: '/documents', icon: FileText, available: true },
     { label: 'Knowledge Sources', desc: 'Manage standards and sources', href: '/knowledge-sources', icon: Library, available: true },
     { label: 'Exports', desc: 'Generate compliance reports', href: '/exports', icon: Download, available: false },
     { label: 'Administration', desc: 'Users, sites and settings', href: '/admin/users', icon: Shield, available: true },
@@ -90,7 +91,7 @@ export default async function DashboardPage() {
                 <FileText className="h-5 w-5 text-[#00a8e8]" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-[#00171f]">0</p>
+                <p className="text-2xl font-bold text-[#00171f]">{documentsCount ?? 0}</p>
                 <p className="text-xs text-gray-500">Documents</p>
               </div>
             </div>

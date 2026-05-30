@@ -17,7 +17,7 @@ const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, active: true },
   { label: 'Search', href: '/search', icon: Search, active: false },
   { label: 'Requirements', href: '/requirements', icon: BookOpen, active: false },
-  { label: 'Documents', href: '/documents', icon: FileText, active: false },
+  { label: 'Documents', href: '/documents', icon: FileText, active: true },
   { label: 'Knowledge Sources', href: '/knowledge-sources', icon: Library, active: true },
   { label: 'Exports', href: '/exports', icon: Download, active: false },
   { label: 'Admin', href: '/admin/users', icon: Settings, active: true },
@@ -76,7 +76,7 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="px-5 py-4 border-t border-white/10">
-        <p className="text-white/30 text-xs">v0.1.0 · Sprint 2</p>
+        <p className="text-white/30 text-xs">v0.1.0 · Sprint 3</p>
       </div>
     </aside>
   )
