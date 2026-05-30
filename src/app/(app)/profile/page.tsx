@@ -15,6 +15,7 @@ export default async function ProfilePage() {
 
   return (
     <ProfileClient
+      userId={user.id}
       userEmail={user.email ?? ''}
       fullName={profile?.full_name ?? ''}
       role={profile?.role ?? ''}

@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/Button'
-import { AlertCircle, CheckCircle, KeyRound, User } from 'lucide-react'
+import { AlertCircle, CheckCircle, KeyRound, User, Pencil } from 'lucide-react'
 
 interface Props {
+  userId: string
   userEmail: string
   fullName: string
   role: string
@@ -21,8 +22,15 @@ const ROLE_LABELS: Record<string, string> = {
   external_auditor: 'External Auditor',
 }
 
-export function ProfileClient({ userEmail, fullName, role, isSystemOwner }: Props) {
+export function ProfileClient({ userId, userEmail, fullName, role, isSystemOwner }: Props) {
   const supabase = createClient()
+
+  const [displayName, setDisplayName] = useState(fullName)
+  const [editingName, setEditingName] = useState(false)
+  const [nameValue, setNameValue] = useState(fullName)
+  const [nameSaving, setNameSaving] = useState(false)
+  const [nameError, setNameError] = useState('')
+  const [nameSuccess, setNameSuccess] = useState('')
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -30,6 +38,23 @@ export function ProfileClient({ userEmail, fullName, role, isSystemOwner }: Prop
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  async function handleSaveName(e: React.FormEvent) {
+    e.preventDefault()
+    setNameSaving(true); setNameError(''); setNameSuccess('')
+    const { error: err } = await supabase
+      .from('user_profiles')
+      .update({ full_name: nameValue.trim() || null })
+      .eq('id', userId)
+    if (err) {
+      setNameError(err.message)
+    } else {
+      setDisplayName(nameValue.trim())
+      setEditingName(false)
+      setNameSuccess('Name updated.')
+    }
+    setNameSaving(false)
+  }
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -83,10 +108,43 @@ export function ProfileClient({ userEmail, fullName, role, isSystemOwner }: Prop
           <h2 className="font-semibold text-[#00171f]">Account details</h2>
         </div>
 
+        {nameError && (
+          <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg mb-4">
+            <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-red-700">{nameError}</p>
+          </div>
+        )}
+        {nameSuccess && (
+          <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg mb-4">
+            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-green-800">{nameSuccess}</p>
+          </div>
+        )}
         <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-4 py-2 border-b border-gray-100">
+          <div className="grid grid-cols-3 gap-4 py-2 border-b border-gray-100 items-center">
             <span className="text-sm text-gray-500">Name</span>
-            <span className="text-sm text-[#00171f] font-medium col-span-2">{fullName || '—'}</span>
+            <div className="col-span-2">
+              {editingName ? (
+                <form onSubmit={handleSaveName} className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={nameValue}
+                    onChange={e => setNameValue(e.target.value)}
+                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7]"
+                    placeholder="Your full name"
+                  />
+                  <Button type="submit" size="sm" disabled={nameSaving}>{nameSaving ? 'Saving…' : 'Save'}</Button>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => { setEditingName(false); setNameValue(displayName) }}>Cancel</Button>
+                </form>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-[#00171f] font-medium">{displayName || <span className="text-gray-400 italic">Not set</span>}</span>
+                  <button onClick={() => { setEditingName(true); setNameSuccess('') }} className="text-gray-400 hover:text-[#007ea7] transition-colors" title="Edit name">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-4 py-2 border-b border-gray-100">
             <span className="text-sm text-gray-500">Email</span>

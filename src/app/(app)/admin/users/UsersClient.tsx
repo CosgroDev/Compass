@@ -2,10 +2,9 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { Users, Plus, X, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
-import type { UserProfile, Role } from '@/lib/types'
+import { Users, Plus, X, AlertCircle, ChevronDown, ChevronRight, Pencil } from 'lucide-react'
+import type { UserProfile, Role, Tenant } from '@/lib/types'
 
 const ALL_ROLES: { value: Role; label: string; systemOwnerOnly: boolean }[] = [
   { value: 'platform_admin', label: 'Platform Admin', systemOwnerOnly: true },
@@ -24,23 +23,35 @@ interface Props {
   tenantId: string
   canManage: boolean
   isSystemOwner: boolean
+  allTenants: Tenant[]
 }
 
-export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, isSystemOwner }: Props) {
+export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, isSystemOwner, allTenants }: Props) {
   const [users, setUsers] = useState<UserProfile[]>(initialUsers)
   const [showInvite, setShowInvite] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteFullName, setInviteFullName] = useState('')
   const [inviteRole, setInviteRole] = useState<Role>('viewer')
+  const [inviteTenantId, setInviteTenantId] = useState(tenantId)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-  const [deactivatedOpen, setDeactivatedOpen] = useState(false)
+
+  // Name editing
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [nameSaving, setNameSaving] = useState(false)
+
+  // Tenant collapse state for system owner view
+  const [collapsedTenants, setCollapsedTenants] = useState<Set<string>>(new Set())
 
   const supabase = createClient()
+  const assignableRoles = ALL_ROLES.filter(r => isSystemOwner || !r.systemOwnerOnly)
 
-  const activeUsers = users.filter(u => u.status === 'active')
-  const deactivatedUsers = users.filter(u => u.status !== 'active')
+  function openInvite() {
+    setInviteEmail(''); setInviteFullName(''); setInviteRole('viewer')
+    setInviteTenantId(tenantId); setError(''); setSuccess(''); setShowInvite(true)
+  }
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
@@ -50,41 +61,51 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, 
     const res = await fetch('/api/admin/invite-user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: inviteEmail.trim(), fullName: inviteFullName.trim(), role: inviteRole, tenantId }),
+      body: JSON.stringify({ email: inviteEmail.trim(), fullName: inviteFullName.trim(), role: inviteRole, tenantId: inviteTenantId }),
     })
-
     const json = await res.json()
     if (!res.ok) { setError(json.error ?? 'Failed to create user'); setLoading(false); return }
 
     setUsers(prev => [json.user, ...prev])
-    setSuccess(`${inviteEmail} has been added to the organisation.`)
-    setInviteEmail(''); setInviteFullName(''); setInviteRole('viewer')
+    setSuccess(`${inviteEmail} has been added.`)
     setShowInvite(false); setLoading(false)
   }
 
   async function handleToggleStatus(u: UserProfile) {
     const newStatus = u.status === 'active' ? 'inactive' : 'active'
     const { data, error: err } = await supabase
-      .from('user_profiles')
-      .update({ status: newStatus })
-      .eq('id', u.id)
-      .select()
-      .single()
-    if (err) { console.error(err); return }
-    if (data) setUsers(prev => prev.map(x => x.id === u.id ? data : x))
+      .from('user_profiles').update({ status: newStatus }).eq('id', u.id).select().single()
+    if (!err && data) setUsers(prev => prev.map(x => x.id === u.id ? data : x))
   }
 
   async function handleChangeRole(u: UserProfile, role: Role) {
     const { data, error: err } = await supabase
-      .from('user_profiles')
-      .update({ role })
-      .eq('id', u.id)
-      .select()
-      .single()
+      .from('user_profiles').update({ role }).eq('id', u.id).select().single()
     if (!err && data) setUsers(prev => prev.map(x => x.id === u.id ? data : x))
   }
 
-  const TableHead = () => (
+  function startEditName(u: UserProfile) {
+    setEditingUserId(u.id)
+    setEditingName(u.full_name ?? '')
+  }
+
+  async function handleSaveName(userId: string) {
+    setNameSaving(true)
+    const { data, error: err } = await supabase
+      .from('user_profiles').update({ full_name: editingName.trim() || null }).eq('id', userId).select().single()
+    if (!err && data) setUsers(prev => prev.map(x => x.id === userId ? data : x))
+    setEditingUserId(null); setNameSaving(false)
+  }
+
+  function toggleTenant(tid: string) {
+    setCollapsedTenants(prev => {
+      const next = new Set(prev)
+      next.has(tid) ? next.delete(tid) : next.add(tid)
+      return next
+    })
+  }
+
+  const TableHead = ({ showTenantCol = false }: { showTenantCol?: boolean }) => (
     <thead>
       <tr className="border-b border-gray-200 bg-gray-50">
         <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
@@ -95,23 +116,42 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, 
     </thead>
   )
 
-  // Roles available to the current user when inviting / changing roles
-  const assignableRoles = ALL_ROLES.filter(r => isSystemOwner || !r.systemOwnerOnly)
-
   const UserRow = ({ u }: { u: UserProfile }) => (
     <tr className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${u.id === currentUserId ? 'bg-blue-50/20' : ''}`}>
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="font-medium text-[#00171f]">
-            {u.full_name ?? <span className="text-gray-400 italic">No name</span>}
-            {u.id === currentUserId && <span className="ml-2 text-xs text-gray-400">(you)</span>}
-          </p>
-          {u.is_system_owner && (
-            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 bg-[#003459] text-white rounded">
-              System owner
-            </span>
-          )}
-        </div>
+        {editingUserId === u.id ? (
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              value={editingName}
+              onChange={e => setEditingName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveName(u.id); if (e.key === 'Escape') setEditingUserId(null) }}
+              className="px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7] w-40"
+              placeholder="Full name"
+            />
+            <Button size="sm" onClick={() => handleSaveName(u.id)} disabled={nameSaving}>Save</Button>
+            <button onClick={() => setEditingUserId(null)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <div>
+              <span className="font-medium text-[#00171f]">
+                {u.full_name ?? <span className="text-gray-400 italic">No name</span>}
+              </span>
+              {u.id === currentUserId && <span className="ml-2 text-xs text-gray-400">(you)</span>}
+              {u.is_system_owner && (
+                <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 bg-[#003459] text-white rounded">
+                  System owner
+                </span>
+              )}
+            </div>
+            {canManage && (
+              <button onClick={() => startEditName(u)} className="text-gray-300 hover:text-[#007ea7] transition-colors flex-shrink-0" title="Edit name">
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </td>
       <td className="px-4 py-3">
         {canManage && u.id !== currentUserId && !u.is_system_owner ? (
@@ -134,11 +174,7 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, 
           {u.id !== currentUserId && !u.is_system_owner && (
             <button
               onClick={() => handleToggleStatus(u)}
-              className={`text-xs font-medium transition-colors ${
-                u.status === 'active'
-                  ? 'text-gray-400 hover:text-red-600'
-                  : 'text-gray-400 hover:text-green-600'
-              }`}
+              className={`text-xs font-medium transition-colors ${u.status === 'active' ? 'text-gray-400 hover:text-red-600' : 'text-gray-400 hover:text-green-600'}`}
             >
               {u.status === 'active' ? 'Deactivate' : 'Reactivate'}
             </button>
@@ -148,6 +184,149 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, 
     </tr>
   )
 
+  const InviteModal = () => (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <h2 className="font-semibold text-[#00171f]">Add user</h2>
+          <button onClick={() => setShowInvite(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+        </div>
+        <form onSubmit={handleInvite} className="px-6 py-5 space-y-4">
+          {error && (
+            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+          {isSystemOwner && allTenants.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tenant <span className="text-red-500">*</span></label>
+              <select value={inviteTenantId} onChange={e => setInviteTenantId(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7]">
+                {allTenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email address <span className="text-red-500">*</span></label>
+            <input required type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7]"
+              placeholder="user@company.com" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Full name</label>
+            <input value={inviteFullName} onChange={e => setInviteFullName(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7]"
+              placeholder="Jane Smith" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Role <span className="text-red-500">*</span></label>
+            <select value={inviteRole} onChange={e => setInviteRole(e.target.value as Role)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7]">
+              {assignableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+          </div>
+          <p className="text-xs text-gray-500">
+            A temporary password <strong>Compass2025!</strong> will be set. The user should change it on first login.
+          </p>
+          <div className="flex gap-3 justify-end pt-2">
+            <Button variant="secondary" type="button" onClick={() => setShowInvite(false)}>Cancel</Button>
+            <Button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create user'}</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+
+  // ── System owner grouped view ──────────────────────────────────────────────
+  if (isSystemOwner && allTenants.length > 0) {
+    const usersByTenant = (tid: string) => users.filter(u => u.tenant_id === tid)
+    const unassigned = users.filter(u => !u.tenant_id)
+
+    return (
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-gray-500">{users.length} user{users.length !== 1 ? 's' : ''} across {allTenants.length} tenant{allTenants.length !== 1 ? 's' : ''}</p>
+          {canManage && (
+            <Button onClick={openInvite}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              Add user
+            </Button>
+          )}
+        </div>
+
+        {success && <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">{success}</div>}
+        {showInvite && <InviteModal />}
+
+        <div className="space-y-3">
+          {allTenants.map(tenant => {
+            const tenantUsers = usersByTenant(tenant.id)
+            const activeUsers = tenantUsers.filter(u => u.status === 'active')
+            const deactivatedUsers = tenantUsers.filter(u => u.status !== 'active')
+            const isCollapsed = collapsedTenants.has(tenant.id)
+
+            return (
+              <div key={tenant.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => toggleTenant(tenant.id)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-medium text-[#00171f]"
+                >
+                  <span className="flex items-center gap-2">
+                    {isCollapsed ? <ChevronRight className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                    {tenant.name}
+                    <span className="text-xs font-normal text-gray-400 font-mono">{tenant.slug}</span>
+                  </span>
+                  <span className="text-xs text-gray-500 font-normal">
+                    {activeUsers.length} active{deactivatedUsers.length > 0 ? ` · ${deactivatedUsers.length} deactivated` : ''}
+                  </span>
+                </button>
+
+                {!isCollapsed && (
+                  <div className="bg-white">
+                    <table className="w-full text-sm">
+                      <TableHead />
+                      <tbody>
+                        {!tenantUsers.length ? (
+                          <tr>
+                            <td colSpan={canManage ? 4 : 3} className="text-center py-6 text-gray-400 text-xs">
+                              No users in this tenant.
+                            </td>
+                          </tr>
+                        ) : activeUsers.map(u => <UserRow key={u.id} u={u} />)}
+                        {deactivatedUsers.map(u => (
+                          <UserRow key={u.id} u={{ ...u }} />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {unassigned.length > 0 && (
+            <div className="border border-dashed border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 text-sm font-medium text-gray-500">
+                Unassigned users ({unassigned.length})
+              </div>
+              <div className="bg-white">
+                <table className="w-full text-sm">
+                  <TableHead />
+                  <tbody>{unassigned.map(u => <UserRow key={u.id} u={u} />)}</tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Regular tenant admin view ─────────────────────────────────────────────
+  const activeUsers = users.filter(u => u.status === 'active')
+  const deactivatedUsers = users.filter(u => u.status !== 'active')
+  const [deactivatedOpen, setDeactivatedOpen] = useState(false)
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -156,68 +335,16 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, 
           {deactivatedUsers.length > 0 && ` · ${deactivatedUsers.length} deactivated`}
         </p>
         {canManage && (
-          <Button onClick={() => { setShowInvite(true); setError(''); setSuccess('') }}>
+          <Button onClick={openInvite}>
             <Plus className="h-4 w-4 mr-1.5" />
             Add user
           </Button>
         )}
       </div>
 
-      {success && (
-        <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-          {success}
-        </div>
-      )}
+      {success && <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">{success}</div>}
+      {showInvite && <InviteModal />}
 
-      {/* Add user modal */}
-      {showInvite && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-              <h2 className="font-semibold text-[#00171f]">Add user</h2>
-              <button onClick={() => setShowInvite(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form onSubmit={handleInvite} className="px-6 py-5 space-y-4">
-              {error && (
-                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email address <span className="text-red-500">*</span></label>
-                <input required type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7]"
-                  placeholder="user@company.com" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Full name</label>
-                <input value={inviteFullName} onChange={e => setInviteFullName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7]"
-                  placeholder="Jane Smith" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role <span className="text-red-500">*</span></label>
-                <select value={inviteRole} onChange={e => setInviteRole(e.target.value as Role)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#007ea7]">
-                  {assignableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-              </div>
-              <p className="text-xs text-gray-500">
-                A temporary password <strong>Compass2025!</strong> will be set. The user should change it on first login.
-              </p>
-              <div className="flex gap-3 justify-end pt-2">
-                <Button variant="secondary" type="button" onClick={() => setShowInvite(false)}>Cancel</Button>
-                <Button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create user'}</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Active users */}
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-4">
         <table className="w-full text-sm">
           <TableHead />
@@ -234,7 +361,6 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, 
         </table>
       </div>
 
-      {/* Deactivated users — collapsible */}
       {deactivatedUsers.length > 0 && (
         <div className="border border-gray-200 rounded-lg overflow-hidden">
           <button
@@ -242,9 +368,7 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, 
             className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-600"
           >
             <span className="flex items-center gap-2">
-              {deactivatedOpen
-                ? <ChevronDown className="h-4 w-4" />
-                : <ChevronRight className="h-4 w-4" />}
+              {deactivatedOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
               Deactivated users ({deactivatedUsers.length})
             </span>
           </button>
@@ -252,9 +376,7 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage, 
             <div className="bg-white">
               <table className="w-full text-sm">
                 <TableHead />
-                <tbody>
-                  {deactivatedUsers.map(u => <UserRow key={u.id} u={u} />)}
-                </tbody>
+                <tbody>{deactivatedUsers.map(u => <UserRow key={u.id} u={u} />)}</tbody>
               </table>
             </div>
           )}
