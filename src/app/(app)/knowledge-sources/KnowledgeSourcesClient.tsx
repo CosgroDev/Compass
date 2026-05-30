@@ -142,6 +142,7 @@ export function KnowledgeSourcesClient({ initialSources, accessRecords, tenantId
           {src.description && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{src.description}</p>}
         </td>
         <td className="px-4 py-3 text-gray-600">{src.source_type}</td>
+        <td className="px-4 py-3 text-gray-600">{src.owner ?? <span className="text-gray-400">—</span>}</td>
         <td className="px-4 py-3">
           {active ? <span className="font-medium text-[#00171f]">{active.version_label}</span> : <span className="text-gray-400">—</span>}
         </td>
@@ -211,6 +212,7 @@ export function KnowledgeSourcesClient({ initialSources, accessRecords, tenantId
       <tr className="border-b border-gray-200 bg-gray-50">
         <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
         <th className="text-left px-4 py-3 font-medium text-gray-600">Type</th>
+        <th className="text-left px-4 py-3 font-medium text-gray-600">Owner / body</th>
         <th className="text-left px-4 py-3 font-medium text-gray-600">Active version</th>
         <th className="text-left px-4 py-3 font-medium text-gray-600">Latest version</th>
         <th className="text-left px-4 py-3 font-medium text-gray-600">Access</th>
@@ -295,7 +297,7 @@ export function KnowledgeSourcesClient({ initialSources, accessRecords, tenantId
           <tbody>
             {!activeSources.length ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-gray-400">
+                <td colSpan={7} className="text-center py-12 text-gray-400">
                   <Library className="h-8 w-8 mx-auto mb-2 opacity-30" />
                   <p>No knowledge sources yet.</p>
                   {canManage && <p className="text-xs mt-1">Add your first source to get started.</p>}
