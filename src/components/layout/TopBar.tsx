@@ -1,9 +1,10 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Bell, ChevronDown, LogOut, User } from 'lucide-react'
+import { Bell, ChevronDown, LogOut, User, KeyRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useState } from 'react'
+import Link from 'next/link'
 
 interface TopBarProps {
   tenantName?: string
@@ -55,17 +56,27 @@ export function TopBar({ tenantName, userFullName, userEmail }: TopBarProps) {
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
+            <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50">
               <div className="px-4 py-2 border-b border-gray-100">
                 <p className="text-xs text-gray-500 truncate">{userEmail}</p>
               </div>
-              <button
-                onClick={handleSignOut}
-                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              <Link
+                href="/profile"
+                onClick={() => setMenuOpen(false)}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
-                <LogOut className="h-4 w-4" />
-                Sign out
-              </button>
+                <KeyRound className="h-4 w-4 text-gray-400" />
+                Change password
+              </Link>
+              <div className="border-t border-gray-100 mt-1 pt-1">
+                <button
+                  onClick={handleSignOut}
+                  className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </button>
+              </div>
             </div>
           )}
         </div>
