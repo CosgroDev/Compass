@@ -157,7 +157,7 @@ export function KnowledgeSourceDetailClient({ source, accessRecord, tenantId, ca
           {canManage && (
             <Button size="sm" onClick={() => setShowAssetForm(true)}>
               <Plus className="h-4 w-4 mr-1" />
-              Add Asset
+              Add asset
             </Button>
           )}
         </div>
@@ -167,7 +167,7 @@ export function KnowledgeSourceDetailClient({ source, accessRecord, tenantId, ca
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-                <h2 className="font-semibold text-[#00171f]">Add Knowledge Asset</h2>
+                <h2 className="font-semibold text-[#00171f]">Add knowledge asset</h2>
                 <button onClick={() => setShowAssetForm(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
               </div>
               <form onSubmit={handleAddAsset} className="px-6 py-5 space-y-4">
@@ -198,7 +198,7 @@ export function KnowledgeSourceDetailClient({ source, accessRecord, tenantId, ca
                 </div>
                 <div className="flex gap-3 justify-end pt-2">
                   <Button variant="secondary" type="button" onClick={() => setShowAssetForm(false)}>Cancel</Button>
-                  <Button type="submit" disabled={loading}>{loading ? 'Adding…' : 'Add Asset'}</Button>
+                  <Button type="submit" disabled={loading}>{loading ? 'Adding…' : 'Add asset'}</Button>
                 </div>
               </form>
             </div>
@@ -253,7 +253,7 @@ export function KnowledgeSourceDetailClient({ source, accessRecord, tenantId, ca
                           disabled={loading}
                           className="text-xs text-[#007ea7] hover:text-[#003459] font-medium transition-colors disabled:opacity-50"
                         >
-                          Set Active
+                          Set active
                         </button>
                       )}
                     </td>

@@ -97,7 +97,7 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage }
         {canManage && (
           <Button onClick={() => { setShowInvite(true); setError(''); setSuccess('') }}>
             <Plus className="h-4 w-4 mr-1.5" />
-            Add User
+            Add user
           </Button>
         )}
       </div>
@@ -113,7 +113,7 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage }
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-              <h2 className="font-semibold text-[#00171f]">Add User</h2>
+              <h2 className="font-semibold text-[#00171f]">Add user</h2>
               <button onClick={() => setShowInvite(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="h-5 w-5" />
               </button>
@@ -154,7 +154,7 @@ export function UsersClient({ initialUsers, currentUserId, tenantId, canManage }
               <p className="text-xs text-gray-500">A temporary password <strong>Compass2025!</strong> will be set. The user should change it on first login.</p>
               <div className="flex gap-3 justify-end pt-2">
                 <Button variant="secondary" type="button" onClick={() => setShowInvite(false)}>Cancel</Button>
-                <Button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create User'}</Button>
+                <Button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create user'}</Button>
               </div>
             </form>
           </div>

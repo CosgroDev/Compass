@@ -85,7 +85,7 @@ export function KnowledgeSourcesClient({ initialSources, accessRecords, tenantId
         {canManage && (
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4 mr-1.5" />
-            Add Source
+            Add source
           </Button>
         )}
       </div>
@@ -95,7 +95,7 @@ export function KnowledgeSourcesClient({ initialSources, accessRecords, tenantId
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-              <h2 className="font-semibold text-[#00171f]">Add Knowledge Source</h2>
+              <h2 className="font-semibold text-[#00171f]">Add knowledge source</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
             </div>
             <form onSubmit={handleCreate} className="px-6 py-5 space-y-4">
@@ -132,7 +132,7 @@ export function KnowledgeSourcesClient({ initialSources, accessRecords, tenantId
               </div>
               <div className="flex gap-3 justify-end pt-2">
                 <Button variant="secondary" type="button" onClick={() => setShowForm(false)}>Cancel</Button>
-                <Button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create Source'}</Button>
+                <Button type="submit" disabled={loading}>{loading ? 'Creating…' : 'Create source'}</Button>
               </div>
             </form>
           </div>
