@@ -6,11 +6,11 @@ function getClient() {
   return _client
 }
 
-const PROMPT_VERSION = '1.1'
-const MODEL = 'claude-opus-4-8'
+const PROMPT_VERSION = '1.2'
+const MODEL = 'claude-haiku-4-5-20251001'
 
-// Split markdown into chunks at section boundaries, max ~25k chars each
-const MAX_CHUNK_CHARS = 25000
+// Split markdown into chunks at section boundaries, max ~15k chars each
+const MAX_CHUNK_CHARS = 15000
 
 export interface ExtractedMetadata {
   title: string
@@ -216,7 +216,7 @@ Only include terms that are explicitly defined in a definitions section or gloss
 async function callClaude(systemPrompt: string, userMessage: string): Promise<string> {
   const stream = await getClient().messages.stream({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 8000,
     system: `You are a compliance document extraction specialist. Return ONLY valid JSON. No commentary, no markdown fences.\n\n${systemPrompt}`,
     messages: [{ role: 'user', content: userMessage }],
   })
