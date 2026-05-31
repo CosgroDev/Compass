@@ -32,6 +32,7 @@ interface Props {
   doc: Document
   initialJobs: DocumentProcessingJob[]
   canManage: boolean
+  canReview: boolean
   extractionMeta: AiExtractionMetadata | null
   extractedSections: DocumentSection[]
   extractedClauses: Clause[]
@@ -40,7 +41,7 @@ interface Props {
   extractedDefinitions: DocumentDefinition[]
 }
 
-export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMeta: initialMeta, extractedSections, extractedClauses, extractedRequirements, extractedTables, extractedDefinitions }: Props) {
+export function DocumentDetailClient({ doc, initialJobs, canManage, canReview, extractionMeta: initialMeta, extractedSections, extractedClauses, extractedRequirements, extractedTables, extractedDefinitions }: Props) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const justUploaded = searchParams.get('uploaded') === '1'
@@ -244,8 +245,8 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
         </div>
         {canManage && (
           <div className="flex items-center gap-2">
-            {/* Publish / Reject — only when awaiting review */}
-            {document.status === 'review_required' && (
+            {/* Publish / Reject — only for roles with review permission */}
+            {canReview && document.status === 'review_required' && (
               <>
                 {rejectConfirm ? (
                   <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">

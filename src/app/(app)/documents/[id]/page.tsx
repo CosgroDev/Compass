@@ -58,12 +58,14 @@ export default async function DocumentDetailPage({ params }: { params: Promise<{
     : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }]
 
   const canManage = ['platform_admin', 'tenant_admin', 'compliance_manager', 'contributor'].includes(profile.role)
+  const canReview = ['platform_admin', 'tenant_admin', 'compliance_manager'].includes(profile.role)
 
   return (
     <DocumentDetailClient
       doc={doc}
       initialJobs={jobs ?? []}
       canManage={canManage}
+      canReview={canReview}
       extractionMeta={extractionMeta ?? null}
       extractedSections={sections.data ?? []}
       extractedClauses={clauses.data ?? []}

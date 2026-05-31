@@ -52,12 +52,31 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true, status: 'published' })
   }
 
-  // action === 'reject': clear extracted data and reset to uploaded
-  // Cascade order respects FK constraints — requirement_embeddings cascade from requirement_masters
-  // All extraction tables cascade from documents but we delete explicitly for clarity
-  const tables = [
-    'requirement_embeddings',
-    'requirement_versions',
+  // action === 'reject': clear extracted data and reset to uploaded.
+  // requirement_versions is keyed by requirement_master_id (no document_id column) so we
+  // delete it via the master IDs first, then cascade the rest by document_id.
+  const { data: masterRows } = await admin
+    .from('requirement_masters')
+    .select('id')
+    .eq('document_id', id)
+
+  const masterIds = (masterRows ?? []).map((r: { id: string }) => r.id)
+
+  if (masterIds.length > 0) {
+    const { error: embErr } = await admin
+      .from('requirement_embeddings')
+      .delete()
+      .in('requirement_master_id', masterIds)
+    if (embErr) return NextResponse.json({ error: `Failed to clear requirement_embeddings: ${embErr.message}` }, { status: 500 })
+
+    const { error: verErr } = await admin
+      .from('requirement_versions')
+      .delete()
+      .in('requirement_master_id', masterIds)
+    if (verErr) return NextResponse.json({ error: `Failed to clear requirement_versions: ${verErr.message}` }, { status: 500 })
+  }
+
+  const docTables = [
     'requirement_masters',
     'clauses',
     'document_sections',
@@ -66,7 +85,7 @@ export async function PATCH(req: NextRequest) {
     'ai_extraction_metadata',
   ]
 
-  for (const table of tables) {
+  for (const table of docTables) {
     const { error } = await admin.from(table).delete().eq('document_id', id)
     if (error) {
       return NextResponse.json({ error: `Failed to clear ${table}: ${error.message}` }, { status: 500 })
