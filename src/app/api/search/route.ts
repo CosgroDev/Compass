@@ -18,8 +18,10 @@ export async function POST(req: NextRequest) {
 
   if (!profile?.tenant_id) return NextResponse.json({ error: 'No tenant' }, { status: 403 })
 
-  const { query, include_summary } = await req.json()
+  const { query, include_summary, document_ids } = await req.json()
   if (!query?.trim()) return NextResponse.json({ error: 'Query required' }, { status: 400 })
+
+  const hasDocFilter = Array.isArray(document_ids) && document_ids.length > 0
 
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,7 +29,7 @@ export async function POST(req: NextRequest) {
   )
 
   // --- Keyword search ---
-  const { data: keywordRaw } = await admin
+  let keywordQuery = admin
     .from('requirement_masters')
     .select(`
       id, requirement_text, requirement_type, clause_id, document_id, confidence_score,
@@ -38,6 +40,10 @@ export async function POST(req: NextRequest) {
     .eq('documents.status', 'published')
     .ilike('requirement_text', `%${query}%`)
     .limit(30)
+
+  if (hasDocFilter) keywordQuery = keywordQuery.in('document_id', document_ids)
+
+  const { data: keywordRaw } = await keywordQuery
 
   const keywordIds = new Set((keywordRaw ?? []).map((r: any) => r.id))
 
@@ -66,7 +72,9 @@ export async function POST(req: NextRequest) {
 
       if (semRaw?.length) {
         // Fetch full context for semantic results not already in keyword set
-        const newIds = (semRaw as any[]).filter(r => !keywordIds.has(r.id)).map(r => r.id)
+        const newIds = (semRaw as any[])
+          .filter(r => !keywordIds.has(r.id) && (!hasDocFilter || document_ids.includes(r.document_id)))
+          .map(r => r.id)
         if (newIds.length > 0) {
           const { data: semContext } = await admin
             .from('requirement_masters')

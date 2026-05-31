@@ -23,9 +23,36 @@ interface Props {
 export function RequirementsClient({ requirements }: Props) {
   const [search, setSearch] = useState('')
   const [selectedType, setSelectedType] = useState('')
+  const [selectedSource, setSelectedSource] = useState('')
+  const [selectedDocument, setSelectedDocument] = useState('')
+
+  // Derive unique sources from data
+  const sources = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const r of requirements) {
+      const doc = r.documents as any
+      const src = doc?.knowledge_sources
+      if (src?.name) map.set(src.name, src.name)
+    }
+    return Array.from(map.keys()).sort()
+  }, [requirements])
+
+  // Derive documents for selected source (or all if no source selected)
+  const documents = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const r of requirements) {
+      const doc = r.documents as any
+      if (!doc?.id || !doc?.title) continue
+      if (selectedSource && doc?.knowledge_sources?.name !== selectedSource) continue
+      map.set(doc.id, doc.title)
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]))
+  }, [requirements, selectedSource])
 
   const filtered = useMemo(() => {
     let r = requirements
+    if (selectedSource) r = r.filter(req => (req.documents as any)?.knowledge_sources?.name === selectedSource)
+    if (selectedDocument) r = r.filter(req => (req.documents as any)?.id === selectedDocument)
     if (selectedType) r = r.filter(req => req.requirement_type === selectedType)
     if (search.trim()) {
       const q = search.toLowerCase()
@@ -35,7 +62,14 @@ export function RequirementsClient({ requirements }: Props) {
       )
     }
     return r
-  }, [requirements, selectedType, search])
+  }, [requirements, selectedSource, selectedDocument, selectedType, search])
+
+  function handleSourceChange(val: string) {
+    setSelectedSource(val)
+    setSelectedDocument('') // reset document when source changes
+  }
+
+  const isFiltered = selectedSource || selectedDocument || selectedType || search.trim()
 
   return (
     <div>
@@ -50,19 +84,47 @@ export function RequirementsClient({ requirements }: Props) {
       </div>
 
       {/* Filter bar */}
-      <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 mb-4 flex flex-col sm:flex-row gap-3">
-        {/* Search */}
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search requirements…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#007ea7]/30 focus:border-[#007ea7]"
-          />
+      <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 mb-4 space-y-3">
+        {/* Row 1: search + source + document */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          {/* Text search */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search requirements…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#007ea7]/30 focus:border-[#007ea7]"
+            />
+          </div>
+          {/* Source filter */}
+          <select
+            value={selectedSource}
+            onChange={e => handleSourceChange(e.target.value)}
+            className="py-2 px-3 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#007ea7]/30 focus:border-[#007ea7] bg-white text-gray-700 min-w-[160px]"
+          >
+            <option value="">All sources</option>
+            {sources.map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          {/* Document filter — only shown when source is selected or multiple docs exist */}
+          {documents.length > 1 && (
+            <select
+              value={selectedDocument}
+              onChange={e => setSelectedDocument(e.target.value)}
+              className="py-2 px-3 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#007ea7]/30 focus:border-[#007ea7] bg-white text-gray-700 min-w-[180px]"
+            >
+              <option value="">All documents</option>
+              {documents.map(([id, title]) => (
+                <option key={id} value={id}>{title}</option>
+              ))}
+            </select>
+          )}
         </div>
-        {/* Type filter */}
+
+        {/* Row 2: type pills */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <button
             onClick={() => setSelectedType('')}
@@ -85,11 +147,19 @@ export function RequirementsClient({ requirements }: Props) {
               {type}
             </button>
           ))}
+          {isFiltered && (
+            <button
+              onClick={() => { setSearch(''); setSelectedType(''); setSelectedSource(''); setSelectedDocument('') }}
+              className="ml-auto text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              Clear all filters
+            </button>
+          )}
         </div>
       </div>
 
       {/* Results count */}
-      {(search || selectedType) && (
+      {isFiltered && (
         <p className="text-xs text-gray-500 mb-3">
           Showing {filtered.length} of {requirements.length} requirements
         </p>
