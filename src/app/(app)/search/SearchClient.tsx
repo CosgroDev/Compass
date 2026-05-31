@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, Sparkles, ChevronRight, AlertCircle, BookOpen, Loader2, X } from 'lucide-react'
 
 const TYPE_COLOURS: Record<string, string> = {
@@ -44,7 +45,9 @@ const EXAMPLE_QUERIES = [
 ]
 
 export function SearchClient() {
-  const [query, setQuery] = useState('')
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const [query, setQuery] = useState(searchParams.get('q') ?? '')
   const [loading, setLoading] = useState(false)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [response, setResponse] = useState<SearchResponse | null>(null)
@@ -53,16 +56,19 @@ export function SearchClient() {
   const [aiSummary, setAiSummary] = useState<{ text: string; citations: string[] } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  async function handleSearch(q?: string) {
-    const searchQuery = (q ?? query).trim()
-    if (!searchQuery) return
+  // Auto-run search if URL has a query param (e.g. navigating back)
+  useEffect(() => {
+    const q = searchParams.get('q')
+    if (q?.trim()) runSearch(q)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
+  async function runSearch(searchQuery: string) {
     setLoading(true)
     setError(null)
     setResponse(null)
     setShowSummary(false)
     setAiSummary(null)
-    if (q) setQuery(q)
 
     try {
       const res = await fetch('/api/search', {
@@ -78,6 +84,16 @@ export function SearchClient() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleSearch(q?: string) {
+    const searchQuery = (q ?? query).trim()
+    if (!searchQuery) return
+
+    if (q) setQuery(q)
+    // Persist query in URL so back-navigation restores the search
+    router.replace(`/search?q=${encodeURIComponent(searchQuery)}`, { scroll: false })
+    await runSearch(searchQuery)
   }
 
   async function handleSummary() {
@@ -137,7 +153,7 @@ export function SearchClient() {
               autoFocus
             />
             {query && (
-              <button type="button" onClick={() => { setQuery(''); setResponse(null); setError(null); inputRef.current?.focus() }}
+              <button type="button" onClick={() => { setQuery(''); setResponse(null); setError(null); router.replace('/search', { scroll: false }); inputRef.current?.focus() }}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 <X className="h-4 w-4" />
               </button>
