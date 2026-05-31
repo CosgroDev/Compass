@@ -25,16 +25,20 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  // Verify document belongs to this tenant
+  // Verify document belongs to this tenant and is not published
   const { data: doc, error: docErr } = await admin
     .from('documents')
-    .select('id, tenant_id')
+    .select('id, tenant_id, status')
     .eq('id', document_id)
     .eq('tenant_id', profile?.tenant_id ?? '')
     .single()
 
   if (docErr || !doc) {
     return NextResponse.json({ error: 'Document not found' }, { status: 404 })
+  }
+
+  if (doc.status === 'published') {
+    return NextResponse.json({ error: 'Published documents cannot be reprocessed' }, { status: 409 })
   }
 
   // Create the processing job
