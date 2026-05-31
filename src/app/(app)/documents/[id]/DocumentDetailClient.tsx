@@ -20,11 +20,12 @@ const PIPELINE_STAGES = [
   { key: 'queued', label: 'Queued' },
   { key: 'processing', label: 'Processing' },
   { key: 'review_required', label: 'Review required' },
+  { key: 'published', label: 'Published' },
 ]
 
 const STATUS_ORDER: Record<string, number> = {
   uploaded: 0, queued: 1, processing: 2,
-  completed: 3, failed: 3, review_required: 3, published: 3,
+  completed: 3, failed: 3, review_required: 3, published: 4,
 }
 
 interface Props {
@@ -52,6 +53,10 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
   const [openJobId, setOpenJobId] = useState<string | null>(initialJobs[0]?.id ?? null)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [publishing, setPublishing] = useState(false)
+  const [rejectConfirm, setRejectConfirm] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
+  const [reviewSuccess, setReviewSuccess] = useState<string | null>(null)
   const [liveEvents, setLiveEvents] = useState<{ id: string; event_type: string; message: string; created_at: string }[]>([])
   const liveLogRef = useRef<HTMLDivElement>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -121,6 +126,35 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
     else setDeleting(false)
   }
 
+  async function handlePublish() {
+    setPublishing(true)
+    const res = await fetch('/api/documents/review', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: doc.id, action: 'publish' }),
+    })
+    if (res.ok) {
+      setDocument(prev => ({ ...prev, status: 'published' }))
+      setReviewSuccess('Document published successfully. Requirements are now live.')
+    }
+    setPublishing(false)
+  }
+
+  async function handleReject() {
+    setRejecting(true)
+    const res = await fetch('/api/documents/review', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: doc.id, action: 'reject' }),
+    })
+    if (res.ok) {
+      setDocument(prev => ({ ...prev, status: 'uploaded' }))
+      setRejectConfirm(false)
+      setReviewSuccess(null)
+    }
+    setRejecting(false)
+  }
+
   async function triggerProcessing() {
     setProcessing(true)
     setProcessingError(null)
@@ -145,7 +179,8 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
   const currentStageIdx = STATUS_ORDER[document.status] ?? 0
   const isFailed = document.status === 'failed'
   const isReviewReady = ['review_required', 'completed', 'published'].includes(document.status)
-  const canReprocess = (isFailed || isReviewReady) && !processing
+  const isPublished = document.status === 'published'
+  const canReprocess = (isFailed || (isReviewReady && !isPublished)) && !processing
   const showExtractionPanel = isReviewReady && extractionMeta
 
   return (
@@ -168,6 +203,14 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
             <p className="text-sm font-medium text-green-800">Upload complete</p>
             <p className="text-xs text-green-700 mt-0.5">AI extraction is running in the background.</p>
           </div>
+        </div>
+      )}
+
+      {/* Review success banner */}
+      {reviewSuccess && (
+        <div className="mb-6 flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+          <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+          <p className="text-sm font-medium text-green-800">{reviewSuccess}</p>
         </div>
       )}
 
@@ -201,6 +244,28 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
         </div>
         {canManage && (
           <div className="flex items-center gap-2">
+            {/* Publish / Reject — only when awaiting review */}
+            {document.status === 'review_required' && (
+              <>
+                {rejectConfirm ? (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                    <span className="text-sm text-amber-700">Reject and reset to uploaded?</span>
+                    <button onClick={handleReject} disabled={rejecting}
+                      className="text-sm font-medium text-amber-700 hover:text-amber-900 disabled:opacity-50">
+                      {rejecting ? 'Rejecting…' : 'Yes, reject'}
+                    </button>
+                    <button onClick={() => setRejectConfirm(false)} className="text-sm text-gray-400 hover:text-gray-600">Cancel</button>
+                  </div>
+                ) : (
+                  <Button variant="secondary" onClick={() => setRejectConfirm(true)}>
+                    Reject
+                  </Button>
+                )}
+                <Button variant="primary" onClick={handlePublish} disabled={publishing}>
+                  {publishing ? 'Publishing…' : 'Publish'}
+                </Button>
+              </>
+            )}
             {canReprocess && (
               <Button variant="secondary" onClick={triggerProcessing} disabled={processing}>
                 <RefreshCw className={`h-4 w-4 mr-1.5 ${processing ? 'animate-spin' : ''}`} />
@@ -232,8 +297,8 @@ export function DocumentDetailClient({ doc, initialJobs, canManage, extractionMe
           <p className="text-xs font-medium text-gray-500 mb-4 uppercase tracking-wide">Processing pipeline</p>
           <div className="flex items-center gap-0">
             {PIPELINE_STAGES.map((stage, idx) => {
-              const done = currentStageIdx > idx || (isReviewReady && idx === 3)
-              const active = currentStageIdx === idx && !isFailed && !isReviewReady
+              const done = currentStageIdx > idx || (isPublished && idx === 4) || (isReviewReady && !isPublished && idx === 3)
+              const active = currentStageIdx === idx && !isFailed && !isReviewReady && !isPublished
               const failed = isFailed && idx === currentStageIdx
 
               return (

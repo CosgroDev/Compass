@@ -181,6 +181,14 @@ export interface AiExtractionMetadata {
   created_at: string
 }
 
+export interface RequirementWithContext extends RequirementMaster {
+  clauses?: Pick<Clause, 'id' | 'clause_number' | 'clause_text'> | null
+  documents?: (Pick<Document, 'id' | 'title' | 'status'> & {
+    knowledge_sources?: Pick<KnowledgeSource, 'id' | 'name'> | null
+    knowledge_assets?: Pick<KnowledgeAsset, 'id' | 'title' | 'version_label'> | null
+  }) | null
+}
+
 export interface TenantKnowledgeAccess {
   id: string
   tenant_id: string
