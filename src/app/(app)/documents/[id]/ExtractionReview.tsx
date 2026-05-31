@@ -85,31 +85,38 @@ export function ExtractionReview({ sections, clauses, requirements, tables, defi
       {activeTab === 'requirements' && (
         <div className="space-y-2">
           {requirements.length === 0 && <EmptyState label="No requirements extracted" />}
-          {requirements.map((req, idx) => (
-            <div key={req.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    {req.requirement_type && (
-                      <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${REQUIREMENT_TYPE_COLOURS[req.requirement_type] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {req.requirement_type}
-                      </span>
-                    )}
-                    {req.clause_id && (
-                      <span className="text-xs text-gray-400">
-                        {clauses.find(c => c.id === req.clause_id)?.clause_number ?? ''}
-                      </span>
-                    )}
+          {requirements.map((req, idx) => {
+            const clauseNumber = req.clause_id ? (clauses.find(c => c.id === req.clause_id)?.clause_number ?? null) : null
+            // Strip leading clause number prefix from text (e.g. "1.1.2 The site shall..." → "The site shall...")
+            const displayText = clauseNumber
+              ? req.requirement_text.replace(new RegExp(`^${clauseNumber.replace('.', '\\.')}\\s+`), '')
+              : req.requirement_text
+            return (
+              <div key={req.id} className="bg-white border border-gray-200 rounded-lg px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      {clauseNumber && (
+                        <span className="text-xs font-mono font-semibold text-white bg-[#003459] px-2 py-0.5 rounded">
+                          {clauseNumber}
+                        </span>
+                      )}
+                      {req.requirement_type && (
+                        <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${REQUIREMENT_TYPE_COLOURS[req.requirement_type] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {req.requirement_type}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-[#00171f] leading-relaxed">{displayText}</p>
                   </div>
-                  <p className="text-sm text-[#00171f] leading-relaxed">{req.requirement_text}</p>
-                </div>
-                <div className="flex-shrink-0 flex items-center gap-2">
-                  <ConfidencePill score={req.confidence_score} />
-                  <span className="text-xs text-gray-300">#{idx + 1}</span>
+                  <div className="flex-shrink-0 flex items-center gap-2">
+                    <ConfidencePill score={req.confidence_score} />
+                    <span className="text-xs text-gray-300">#{idx + 1}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
