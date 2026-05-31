@@ -15,7 +15,7 @@ import {
 
 const navItems = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, active: true },
-  { label: 'Search', href: '/search', icon: Search, active: false },
+  { label: 'Search', href: '/search', icon: Search, active: true },
   { label: 'Requirements', href: '/requirements', icon: BookOpen, active: true },
   { label: 'Documents', href: '/documents', icon: FileText, active: true },
   { label: 'Knowledge Sources', href: '/knowledge-sources', icon: Library, active: true },
